@@ -1,0 +1,36 @@
+{
+	"repoName": "audiofx",
+	"name": "Audio FX (live audio-reactive)",
+	"author": "joeskolengaden",
+	"description": "Live audio-reactive lighting: captures a USB audio input, analyzes it in real time (level / bands / beat), and modulates the channel data so the lights react to the room audio. Phase 1: level->brightness, beat->flash.",
+	"homeURL": "https://github.com/joeskolengaden/audiofx",
+	"srcURL": "https://github.com/joeskolengaden/audiofx.git",
+	"bugURL": "https://github.com/joeskolengaden/audiofx/issues",
+	"allowUpdates": 1,
+	"hasSettingsPage": 1,
+	"pluginType": "channelData",
+	"pipelineStage": "modifyChannelData",
+	"appSchemaVersion": 1,
+	"settingsFile": "config/plugin.audiofx",
+	"settingsSchema": [
+		{ "key": "enabled", "label": "Plugin enabled", "type": "bool", "default": false, "group": "general", "appliesLive": true },
+		{ "key": "onlyWhenPlaying", "label": "Only while a sequence is playing", "type": "bool", "default": true, "group": "general", "appliesLive": true },
+		{ "key": "audioDevice", "label": "Audio input device", "type": "string", "default": "default", "group": "audio", "appliesLive": true, "help": "ALSA capture device for the USB input, e.g. hw:1,0" },
+		{ "key": "sampleRate", "label": "Sample rate", "type": "enum", "default": "44100", "options": ["44100", "48000"], "group": "audio", "appliesLive": true },
+		{ "key": "gain", "label": "Input gain", "type": "float", "default": 1.0, "min": 0.1, "max": 10, "step": 0.1, "group": "audio", "appliesLive": true, "widget": "slider" },
+		{ "key": "gate", "label": "Noise gate", "type": "float", "default": 0.02, "min": 0, "max": 0.3, "step": 0.005, "group": "audio", "appliesLive": true, "widget": "slider", "help": "Below this level is treated as silence." },
+		{ "key": "sensitivity", "label": "Beat sensitivity", "type": "float", "default": 1.5, "min": 1.05, "max": 3, "step": 0.05, "group": "audio", "appliesLive": true, "widget": "slider", "help": "Lower = more beats detected." },
+
+		{ "key": "channelsPerPixel", "label": "Channels per pixel", "type": "enum", "default": "3", "options": ["3", "4"], "group": "range", "appliesLive": true },
+		{ "key": "startChannel", "label": "Start channel", "type": "int", "default": 1, "min": 1, "max": 1048576, "step": 1, "group": "range", "appliesLive": true },
+		{ "key": "channelCount", "label": "Channel count", "type": "int", "default": 1500, "min": 0, "max": 1048576, "step": 3, "group": "range", "appliesLive": true },
+
+		{ "key": "br_enabled", "label": "Level → brightness", "type": "bool", "default": true, "group": "reactions", "appliesLive": true, "help": "Design brightness follows loudness." },
+		{ "key": "br_min", "label": "Min brightness", "type": "int", "default": 15, "min": 0, "max": 100, "step": 1, "unit": "%", "group": "reactions", "appliesLive": true, "widget": "slider" },
+		{ "key": "fl_enabled", "label": "Beat → flash", "type": "bool", "default": true, "group": "reactions", "appliesLive": true, "help": "White flash on each beat." },
+		{ "key": "fl_intensity", "label": "Flash intensity", "type": "int", "default": 80, "min": 0, "max": 100, "step": 1, "unit": "%", "group": "reactions", "appliesLive": true, "widget": "slider" }
+	],
+	"versions": [
+		{ "minFPPVersion": "5.0", "maxFPPVersion": "0", "branch": "main", "sha": "" }
+	]
+}

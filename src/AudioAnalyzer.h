@@ -1,0 +1,72 @@
+/*
+ * AudioAnalyzer - real-time audio feature extraction for the audiofx plugin.
+ *
+ * Fed mono float samples; produces (thread-safe, lock-free) live features:
+ *   - level   : overall loudness 0..1 (AGC'd)
+ *   - band[i] : per-band energy 0..1 (log-spaced, AGC'd)
+ *   - bass/mid/treble : grouped band energy 0..1
+ *   - beat    : decaying onset envelope 0..1 (spectral-flux beat detection)
+ *   - bpm     : estimated tempo
+ *   - active  : true when audio is above the noise gate
+ *
+ * Pure DSP (kiss_fftr), no I/O - so it is unit-testable without a sound card.
+ * pushSamples() is called from the capture thread; the getters are read from
+ * the output thread.
+ */
+#pragma once
+
+#include <atomic>
+#include <vector>
+
+#include "kissfft/kiss_fftr.h"
+
+class AudioAnalyzer {
+public:
+    static constexpr int MAX_BANDS = 16;
+
+    AudioAnalyzer() = default;
+    ~AudioAnalyzer();
+
+    void configure(int sampleRate, int fftSize, int numBands);
+    void setGain(float g) { mGain = g < 0.01f ? 0.01f : g; }
+    void setGate(float g) { mGate = g; }            // 0..1 noise gate
+    void setSensitivity(float s) { mSensitivity = s; }  // beat threshold mult
+
+    // Feed mono samples (any count); processes whole FFT windows as they fill.
+    void pushSamples(const float* mono, int n);
+
+    float level() const { return mLevel.load(std::memory_order_relaxed); }
+    float band(int i) const { return (i >= 0 && i < mNumBands) ? mBands[i].load(std::memory_order_relaxed) : 0.f; }
+    int numBands() const { return mNumBands; }
+    float bass() const { return mBass.load(std::memory_order_relaxed); }
+    float mid() const { return mMid.load(std::memory_order_relaxed); }
+    float treble() const { return mTreble.load(std::memory_order_relaxed); }
+    float beat() const { return mBeat.load(std::memory_order_relaxed); }
+    float bpm() const { return mBpm.load(std::memory_order_relaxed); }
+    bool active() const { return mActive.load(std::memory_order_relaxed); }
+
+private:
+    void analyzeWindow();
+
+    int mSampleRate = 44100, mFftSize = 1024, mNumBands = 8;
+    std::vector<float> mAccum;   // accumulation buffer (mFftSize)
+    int mFill = 0;
+    std::vector<float> mHann;
+    kiss_fftr_cfg mCfg = nullptr;
+    std::vector<kiss_fft_cpx> mFreq;     // mFftSize/2+1
+    std::vector<float> mMag, mPrevMag;   // magnitude spectra
+    std::vector<int> mBandLo, mBandHi;   // bin ranges per band
+    float mBandPeak[MAX_BANDS] = {0};    // AGC running peak per band
+    float mLevelPeak = 0.0001f;
+
+    float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;
+
+    // beat detection
+    float mFluxAvg = 0.0f;
+    double mTimeMs = 0.0, mLastBeatMs = -1000.0;
+    double mLastInterval = 0.0;
+
+    std::atomic<float> mLevel{0}, mBass{0}, mMid{0}, mTreble{0}, mBeat{0}, mBpm{0};
+    std::atomic<float> mBands[MAX_BANDS]{};
+    std::atomic<bool> mActive{false};
+};
