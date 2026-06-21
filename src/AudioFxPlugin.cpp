@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include "Plugin.h"
@@ -43,6 +44,25 @@ double toDouble(const std::string& v, double d) {
     return e == v.c_str() ? d : r;
 }
 inline uint8_t clamp8(int v) { return v < 0 ? 0 : (v > 255 ? 255 : (uint8_t)v); }
+
+void hsv2rgb(double h, double s, double v, uint8_t& R, uint8_t& G, uint8_t& B) {
+    h = std::fmod(h, 360.0); if (h < 0) h += 360.0;
+    double c = v * s, x = c * (1 - std::fabs(std::fmod(h / 60.0, 2.0) - 1)), m = v - c, r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    R = clamp8((int)std::lround((r + m) * 255)); G = clamp8((int)std::lround((g + m) * 255)); B = clamp8((int)std::lround((b + m) * 255));
+}
+void rgb2hsv(uint8_t R, uint8_t G, uint8_t B, double& h, double& s, double& v) {
+    double r = R / 255.0, g = G / 255.0, b = B / 255.0;
+    double mx = std::max({r, g, b}), mn = std::min({r, g, b}), d = mx - mn;
+    v = mx; s = mx <= 0 ? 0 : d / mx;
+    if (d <= 0) { h = 0; return; }
+    if (mx == r) h = 60 * std::fmod((g - b) / d, 6.0);
+    else if (mx == g) h = 60 * (((b - r) / d) + 2);
+    else h = 60 * (((r - g) / d) + 4);
+    if (h < 0) h += 360;
+}
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -71,6 +91,10 @@ public:
         const float beat = mAnalyzer.beat();
         const bool active = mAnalyzer.active();
 
+        // Phase 2: direct visualizer (overwrites the range) and hue drive.
+        if (mVisMode != 0) applyVisualizer(d, si, by, pixels, cpp);
+        if (mHuEnabled && active) applyHueDrive(d, si, pixels, cpp);
+
         // level -> brightness: scale the range by floor + (1-floor)*level.
         // When silent, pass through (scale 1) so it doesn't sit dim.
         if (mBrEnabled && active) {
@@ -98,6 +122,41 @@ private:
     std::string cfg(const std::string& k) const {
         auto it = settings.find(k);
         return it == settings.end() ? std::string() : it->second;
+    }
+
+    // Phase 2: spectrum/VU visualizer - generates pixels from the audio.
+    void applyVisualizer(uint8_t* d, long si, long by, long pixels, long cpp) {
+        if (pixels < 1) return;
+        const int nb = mAnalyzer.numBands();
+        if (mVisMode == 1) {  // VU: fill from start, length = level
+            std::memset(d + si, 0, by);
+            long lit = (long)std::lround(mAnalyzer.level() * pixels);
+            for (long p = 0; p < lit; ++p) {
+                double frac = (double)p / std::max<long>(1, pixels - 1);  // green->red
+                uint8_t r, g, b; hsv2rgb(120.0 * (1.0 - frac), 1.0, 1.0, r, g, b);
+                long i = si + p * cpp; d[i] = r; d[i + 1] = g; d[i + 2] = b;
+            }
+        } else {  // spectrum: each pixel sampled from the band at its position
+            for (long p = 0; p < pixels; ++p) {
+                int bi = (int)((double)p * nb / pixels);
+                if (bi >= nb) bi = nb - 1;
+                float e = mAnalyzer.band(bi);
+                uint8_t r, g, b; hsv2rgb(280.0 * (double)bi / std::max(1, nb - 1), 1.0, e, r, g, b);
+                long i = si + p * cpp; d[i] = r; d[i + 1] = g; d[i + 2] = b;
+            }
+        }
+    }
+
+    // Phase 2: rotate hue of lit pixels by the spectral balance (bass<->treble).
+    void applyHueDrive(uint8_t* d, long si, long pixels, long cpp) {
+        double shift = (mAnalyzer.treble() - mAnalyzer.bass()) * mHuAmount;
+        if (std::fabs(shift) < 0.5) return;
+        for (long p = 0; p < pixels; ++p) {
+            long i = si + p * cpp;
+            double h, s, v; rgb2hsv(d[i], d[i + 1], d[i + 2], h, s, v);
+            if (v <= 0.0) continue;
+            hsv2rgb(h + shift, s, v, d[i], d[i + 1], d[i + 2]);
+        }
     }
     bool range(long& startIdx, long& bytes) const {
         long count = mCount;
@@ -168,6 +227,11 @@ private:
 
         mFlEnabled = toLong(cfg("fl_enabled"), 1) != 0;
         mFlIntensity = std::min(100L, std::max(0L, toLong(cfg("fl_intensity"), 80)));
+
+        std::string vm = cfg("vis_mode");
+        mVisMode = (vm == "vu") ? 1 : (vm == "spectrum") ? 2 : 0;
+        mHuEnabled = toLong(cfg("hu_enabled"), 0) != 0;
+        mHuAmount = toDouble(cfg("hu_amount"), 60.0);
     }
 
     AudioAnalyzer mAnalyzer;
@@ -184,6 +248,9 @@ private:
     long mBrMin = 15;
     bool mFlEnabled = true;
     long mFlIntensity = 80;
+    int mVisMode = 0;          // 0 off, 1 vu, 2 spectrum
+    bool mHuEnabled = false;
+    double mHuAmount = 60.0;
 };
 
 extern "C" {

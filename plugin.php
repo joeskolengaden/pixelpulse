@@ -94,6 +94,15 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Flash intensity</div><div><?php echo afNum('fl_intensity', '80', '0', '100', '1', '%'); ?></div>
     </div></div>
   </div>
+
+  <div class="card">
+    <div class="head"><span class="t">Visualizer &amp; color</span></div>
+    <div class="body"><div class="grid">
+      <div class="lab">Visualizer</div><div><select onChange="SetPluginSetting('audiofx','vis_mode',this.value,0,0);"><?php foreach (array('off','vu','spectrum') as $m) echo "<option value='$m'" . (af_get('vis_mode','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">generates pixels from the audio over the range</span></div>
+      <div class="lab">Spectral hue drive <?php echo afTog('hu_enabled', '0'); ?></div><div class="help">Shift the design's hue with bass/treble balance.</div>
+      <div class="lab">Hue amount</div><div><?php echo afNum('hu_amount', '60', '0', '180', '5', 'deg'); ?></div>
+    </div></div>
+  </div>
 </div>
 
 <script>
