@@ -1,11 +1,11 @@
 <?php
-// Settings page for the "audiofx" plugin. $pluginSettings populated by FPP from
-// config/plugin.audiofx. Styling scoped under #afx.
+// Settings page for the "pixelpulse" plugin. $pluginSettings populated by FPP from
+// config/plugin.pixelpulse. Styling scoped under #afx.
 global $pluginSettings;
 if (!isset($pluginSettings) || !is_array($pluginSettings)) $pluginSettings = array();
 function af_get($k, $d = '') { global $pluginSettings; return isset($pluginSettings[$k]) ? $pluginSettings[$k] : $d; }
 function af_chk($k, $d = '0') { return af_get($k, $d) == '1' ? ' checked' : ''; }
-function af_js($k, $b = false) { $v = $b ? 'this.checked?1:0' : 'this.value'; $e = $b ? ' afxToggle(this);' : ''; return "SetPluginSetting('audiofx','$k',$v,0,0);$e"; }
+function af_js($k, $b = false) { $v = $b ? 'this.checked?1:0' : 'this.value'; $e = $b ? ' afxToggle(this);' : ''; return "SetPluginSetting('pixelpulse','$k',$v,0,0);$e"; }
 function afNum($k, $d, $mn, $mx, $st, $u = '') { return "<div class=\"sl\"><input type=\"range\" min=\"$mn\" max=\"$mx\" step=\"$st\" value=\"" . htmlspecialchars(af_get($k, $d)) . "\" oninput=\"this.nextElementSibling.textContent=this.value+'$u';\" onChange=\"" . af_js($k) . "\"><span>" . htmlspecialchars(af_get($k, $d)) . "$u</span></div>"; }
 function afInt($k, $d, $mn = '', $mx = '') { $a = ($mn !== '' ? " min=\"$mn\"" : '') . ($mx !== '' ? " max=\"$mx\"" : ''); return "<input type=\"number\"$a value=\"" . htmlspecialchars(af_get($k, $d)) . "\" onChange=\"" . af_js($k) . "\">"; }
 function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbox\"" . af_chk($k, $d) . " onChange=\"" . af_js($k, true) . "\"><span class=\"sl2\"></span></label>"; }
@@ -68,8 +68,8 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">Audio input</span></div>
     <div class="body"><div class="grid">
-      <div class="lab">Device</div><div><select id="af-device" onChange="SetPluginSetting('audiofx','audioDevice',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('audioDevice', 'default')); ?>"><?php echo htmlspecialchars(af_get('audioDevice', 'default')); ?> (current)</option></select> <span class="help">USB capture device</span></div>
-      <div class="lab">Sample rate</div><div><select onChange="SetPluginSetting('audiofx','sampleRate',this.value,0,0);"><?php foreach (array('44100','48000') as $r) echo "<option value='$r'" . (af_get('sampleRate','44100')===$r?' selected':'') . ">$r</option>"; ?></select></div>
+      <div class="lab">Device</div><div><select id="af-device" onChange="SetPluginSetting('pixelpulse','audioDevice',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('audioDevice', 'default')); ?>"><?php echo htmlspecialchars(af_get('audioDevice', 'default')); ?> (current)</option></select> <span class="help">USB capture device</span></div>
+      <div class="lab">Sample rate</div><div><select onChange="SetPluginSetting('pixelpulse','sampleRate',this.value,0,0);"><?php foreach (array('44100','48000') as $r) echo "<option value='$r'" . (af_get('sampleRate','44100')===$r?' selected':'') . ">$r</option>"; ?></select></div>
       <div class="lab">Input gain</div><div><?php echo afNum('gain', '1.0', '0.1', '10', '0.1'); ?></div>
       <div class="lab">Noise gate</div><div><?php echo afNum('gate', '0.02', '0', '0.3', '0.005'); ?></div>
       <div class="lab">Beat sensitivity</div><div><?php echo afNum('sensitivity', '1.5', '1.05', '3', '0.05'); ?></div>
@@ -79,7 +79,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">Range</span></div>
     <div class="body"><div class="grid">
-      <div class="lab">Channels / pixel</div><div><select onChange="SetPluginSetting('audiofx','channelsPerPixel',this.value,0,0);"><?php foreach (array('3','4') as $c) echo "<option value='$c'" . (af_get('channelsPerPixel','3')===$c?' selected':'') . ">$c</option>"; ?></select></div>
+      <div class="lab">Channels / pixel</div><div><select onChange="SetPluginSetting('pixelpulse','channelsPerPixel',this.value,0,0);"><?php foreach (array('3','4') as $c) echo "<option value='$c'" . (af_get('channelsPerPixel','3')===$c?' selected':'') . ">$c</option>"; ?></select></div>
       <div class="lab">Start channel</div><div><?php echo afInt('startChannel', '1', 1); ?></div>
       <div class="lab">Channel count</div><div><?php echo afInt('channelCount', '1500', 0); ?> <span class="help">cover your pixels</span></div>
     </div></div>
@@ -98,7 +98,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">Visualizer &amp; color</span></div>
     <div class="body"><div class="grid">
-      <div class="lab">Visualizer</div><div><select onChange="SetPluginSetting('audiofx','vis_mode',this.value,0,0);"><?php foreach (array('off','vu','spectrum') as $m) echo "<option value='$m'" . (af_get('vis_mode','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">generates pixels from the audio over the range</span></div>
+      <div class="lab">Visualizer</div><div><select onChange="SetPluginSetting('pixelpulse','vis_mode',this.value,0,0);"><?php foreach (array('off','vu','spectrum') as $m) echo "<option value='$m'" . (af_get('vis_mode','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">generates pixels from the audio over the range</span></div>
       <div class="lab">Spectral hue drive <?php echo afTog('hu_enabled', '0'); ?></div><div class="help">Shift the design's hue with bass/treble balance.</div>
       <div class="lab">Hue amount</div><div><?php echo afNum('hu_amount', '60', '0', '180', '5', 'deg'); ?></div>
     </div></div>
@@ -107,7 +107,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">Audio → speed</span></div>
     <div class="body"><div class="grid">
-      <div class="lab">Mode</div><div><select onChange="SetPluginSetting('audiofx','speed_mode',this.value,0,0);"><?php foreach (array('off','level','beat') as $m) echo "<option value='$m'" . (af_get('speed_mode','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">light-only sequences</span></div>
+      <div class="lab">Mode</div><div><select onChange="SetPluginSetting('pixelpulse','speed_mode',this.value,0,0);"><?php foreach (array('off','level','beat') as $m) echo "<option value='$m'" . (af_get('speed_mode','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">light-only sequences</span></div>
       <div class="lab">Speed amount</div><div><?php echo afNum('speed_amount', '50', '0', '300', '5', '%'); ?></div>
     </div></div>
   </div>
@@ -115,7 +115,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
 
 <script>
 function afxToggle(cb){}
-function afApi(p){ return 'plugin.php?plugin=audiofx&page=' + p + '&nopage=1'; }
+function afApi(p){ return 'plugin.php?plugin=pixelpulse&page=' + p + '&nopage=1'; }
 // build band bars
 var afBands = document.getElementById('af-bands');
 for (var i=0;i<8;i++){ var d=document.createElement('div'); afBands.appendChild(d); }

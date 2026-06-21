@@ -1,5 +1,5 @@
 /*
- * AudioAnalyzer - real-time audio feature extraction for the audiofx plugin.
+ * AudioAnalyzer - real-time audio feature extraction for the pixelpulse plugin.
  *
  * Fed mono float samples; produces (thread-safe, lock-free) live features:
  *   - level   : overall loudness 0..1 (AGC'd)

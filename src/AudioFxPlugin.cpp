@@ -1,5 +1,5 @@
 /*
- * FPP "audiofx" plugin  -  live audio-reactive lighting (FPP 5.4 - 9.x)
+ * FPP "pixelpulse" plugin  -  live audio-reactive lighting (FPP 5.4 - 9.x)
  *
  * Captures live audio from a USB sound card (ALSA), analyzes it in real time
  * (level / frequency bands / beat / bpm via AudioAnalyzer), and modulates the
@@ -11,7 +11,7 @@
  *
  * Like pixelfx: a ChannelData modifier, never touches test patterns, optional
  * "only while a sequence is playing", settings re-read ~2x/sec so app/UI changes
- * apply live. Writes /tmp/audiofx_status.json for the settings-page meters.
+ * apply live. Writes /tmp/pixelpulse_status.json for the settings-page meters.
  */
 #include <algorithm>
 #include <atomic>
@@ -72,7 +72,7 @@ void rgb2hsv(uint8_t R, uint8_t G, uint8_t B, double& h, double& s, double& v) {
 
 class AudioFxPlugin : public FPPPlugin {
 public:
-    AudioFxPlugin() : FPPPlugin("audiofx") {
+    AudioFxPlugin() : FPPPlugin("pixelpulse") {
         mLastReload = std::chrono::steady_clock::now();
         mLastStatus = mLastReload;
         applySettings();
@@ -225,7 +225,7 @@ private:
         auto now = std::chrono::steady_clock::now();
         if (now - mLastStatus < std::chrono::milliseconds(120)) return;
         mLastStatus = now;
-        FILE* f = fopen("/tmp/audiofx_status.json", "w");
+        FILE* f = fopen("/tmp/pixelpulse_status.json", "w");
         if (!f) return;
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"

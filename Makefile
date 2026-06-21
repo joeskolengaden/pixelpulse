@@ -1,9 +1,9 @@
-# Makefile for the FPP "audiofx" plugin (live audio-reactive lighting).
+# Makefile for the FPP "pixelpulse" plugin (live audio-reactive lighting).
 #
 #   make / make clean   build / remove the plugin shared library
 # Override FPPDIR if FPP is not at /opt/fpp:  make FPPDIR=/path/to/fpp
 
-PLUGIN  := audiofx
+PLUGIN  := pixelpulse
 FPPDIR  ?= /opt/fpp
 SRCDIR  ?= $(FPPDIR)/src
 
