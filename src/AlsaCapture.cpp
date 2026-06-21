@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <vector>
 
@@ -49,8 +50,12 @@ void AlsaCapture::runTestSignal() {
     mOk.store(false);
 }
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(PFX_FORCE_ALSA)
 #include <alsa/asoundlib.h>
+#include <cerrno>
+#ifndef ESTRPIPE
+#define ESTRPIPE EPIPE  // Linux-only errno; fall back to EPIPE elsewhere
+#endif
 
 void AlsaCapture::runCapture() {
     const snd_pcm_uframes_t period = 512;  // ~11ms @ 44.1k
