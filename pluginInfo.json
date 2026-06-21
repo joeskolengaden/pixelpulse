@@ -32,7 +32,10 @@
 
 		{ "key": "vis_mode", "label": "Visualizer", "type": "enum", "default": "off", "options": ["off", "vu", "spectrum"], "group": "visualizer", "appliesLive": true, "help": "Generate pixels directly from the audio (overrides the design over the range)." },
 		{ "key": "hu_enabled", "label": "Spectral hue drive", "type": "bool", "default": false, "group": "visualizer", "appliesLive": true, "help": "Shift the design's hue with the bass/treble balance." },
-		{ "key": "hu_amount", "label": "Hue amount", "type": "int", "default": 60, "min": 0, "max": 180, "step": 5, "unit": "deg", "group": "visualizer", "appliesLive": true, "widget": "slider" }
+		{ "key": "hu_amount", "label": "Hue amount", "type": "int", "default": 60, "min": 0, "max": 180, "step": 5, "unit": "deg", "group": "visualizer", "appliesLive": true, "widget": "slider" },
+
+		{ "key": "speed_mode", "label": "Audio → speed", "type": "enum", "default": "off", "options": ["off", "level", "beat"], "group": "speed", "appliesLive": true, "help": "Modulate playback speed from the audio. Light-only sequences (audio-backed shows are slaved to their media clock)." },
+		{ "key": "speed_amount", "label": "Speed amount", "type": "int", "default": 50, "min": 0, "max": 300, "step": 5, "unit": "%", "group": "speed", "appliesLive": true, "widget": "slider", "help": "Max speed-up at full level/beat." }
 	],
 	"versions": [
 		{ "minFPPVersion": "5.0", "maxFPPVersion": "0", "branch": "main", "sha": "" }

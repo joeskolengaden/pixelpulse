@@ -26,11 +26,15 @@ and spectral-flux beat detection. A live snapshot is written to
 
 ## Roadmap
 
-- **Phase 1 (this):** capture + analysis + live meters + `level → brightness`,
-  `beat → flash`.
-- **Phase 2:** bands → hue / strand sections, and a direct spectrum/VU visualizer.
-- **Phase 3:** beat → speed (tempo), BPM tuning, AGC/sensitivity.
+- **Phase 1 ✅** capture + analysis + live meters + `level → brightness`, `beat → flash`.
+- **Phase 2 ✅** spectrum/VU visualizer (`vis_mode`) + spectral hue drive (`hu_*`).
+- **Phase 3 ✅** `level/beat → speed` (modulates FPP's playback rate; light-only
+  sequences) + BPM tuning + gain/gate/sensitivity.
 - **Phase 4 (optional):** split capture into a sidecar daemon for crash isolation.
+
+The full reaction pipeline (each independently toggleable, over your channel
+range): visualizer → hue drive → level→brightness → beat→flash, plus the
+audio→speed lever. AGC + a noise gate keep it working across quiet and loud rooms.
 
 ## Setup
 

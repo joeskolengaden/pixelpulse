@@ -30,6 +30,11 @@
 #include "AlsaCapture.h"
 #include "AudioAnalyzer.h"
 
+// FPP playback-rate control (channeloutputthread.cpp). Declared here so we don't
+// pull the whole channeloutput header; resolved against fppd at load.
+void SetChannelOutputRefreshRate(float rate);
+float GetChannelOutputRefreshRate();
+
 namespace {
 long toLong(const std::string& v, long d) {
     if (v.empty()) return d;
@@ -81,6 +86,8 @@ public:
         writeStatus();
         if (!mEnabled || d == nullptr) return;
         if (!shouldModify()) return;
+
+        applySpeed();  // Phase 3: audio -> playback speed (light-only sequences)
 
         long si, by;
         if (!range(si, by)) return;
@@ -145,6 +152,29 @@ private:
                 long i = si + p * cpp; d[i] = r; d[i + 1] = g; d[i + 2] = b;
             }
         }
+    }
+
+    // Phase 3: modulate FPP's playback rate from the audio. Only while a
+    // sequence is running, and meaningful for LIGHT-ONLY sequences (audio-backed
+    // ones are slaved to their media clock). Self-correcting: mult 1.0 restores
+    // the native rate, so turning it off returns to normal speed.
+    void applySpeed(int /*unused*/ = 0) {
+        if (sequence == nullptr || !sequence->IsSequenceRunning()) return;
+        int st = sequence->GetSeqStepTime();
+        if (st <= 0) return;
+        float native = 1000.0f / st;
+        float mult = 1.0f;
+        if (mSpeedMode != 0) {
+            float a = (mSpeedMode == 2) ? mAnalyzer.beat() : mAnalyzer.level();
+            float target = 1.0f + a * (float)mSpeedAmount / 100.0f;
+            mSpeedMult += (target - mSpeedMult) * 0.15f;  // smooth to avoid jitter
+            mult = mSpeedMult;
+        } else {
+            mSpeedMult = 1.0f;
+        }
+        float rate = std::max(1.0f, std::min(120.0f, native * mult));
+        if (std::fabs(GetChannelOutputRefreshRate() - rate) > 0.05f)
+            SetChannelOutputRefreshRate(rate);
     }
 
     // Phase 2: rotate hue of lit pixels by the spectral balance (bass<->treble).
@@ -232,6 +262,10 @@ private:
         mVisMode = (vm == "vu") ? 1 : (vm == "spectrum") ? 2 : 0;
         mHuEnabled = toLong(cfg("hu_enabled"), 0) != 0;
         mHuAmount = toDouble(cfg("hu_amount"), 60.0);
+
+        std::string sm = cfg("speed_mode");
+        mSpeedMode = (sm == "level") ? 1 : (sm == "beat") ? 2 : 0;
+        mSpeedAmount = std::min(300L, std::max(0L, toLong(cfg("speed_amount"), 50)));
     }
 
     AudioAnalyzer mAnalyzer;
@@ -251,6 +285,9 @@ private:
     int mVisMode = 0;          // 0 off, 1 vu, 2 spectrum
     bool mHuEnabled = false;
     double mHuAmount = 60.0;
+    int mSpeedMode = 0;        // 0 off, 1 level, 2 beat
+    long mSpeedAmount = 50;
+    float mSpeedMult = 1.0f;
 };
 
 extern "C" {

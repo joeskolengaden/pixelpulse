@@ -103,6 +103,14 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Hue amount</div><div><?php echo afNum('hu_amount', '60', '0', '180', '5', 'deg'); ?></div>
     </div></div>
   </div>
+
+  <div class="card">
+    <div class="head"><span class="t">Audio → speed</span></div>
+    <div class="body"><div class="grid">
+      <div class="lab">Mode</div><div><select onChange="SetPluginSetting('audiofx','speed_mode',this.value,0,0);"><?php foreach (array('off','level','beat') as $m) echo "<option value='$m'" . (af_get('speed_mode','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">light-only sequences</span></div>
+      <div class="lab">Speed amount</div><div><?php echo afNum('speed_amount', '50', '0', '300', '5', '%'); ?></div>
+    </div></div>
+  </div>
 </div>
 
 <script>

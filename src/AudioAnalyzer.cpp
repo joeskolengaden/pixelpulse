@@ -120,7 +120,12 @@ void AudioAnalyzer::analyzeWindow() {
         double interval = mTimeMs - mLastBeatMs;
         mLastBeatMs = mTimeMs;
         if (interval > 250.0 && interval < 1500.0) {  // 40-240 bpm
-            mLastInterval = (mLastInterval <= 0) ? interval : (0.7 * mLastInterval + 0.3 * interval);
+            // snap to the running estimate if close, else converge quickly
+            if (mLastInterval <= 0) mLastInterval = interval;
+            else if (std::fabs(interval - mLastInterval) < 0.25 * mLastInterval)
+                mLastInterval = 0.6 * mLastInterval + 0.4 * interval;  // refine
+            else
+                mLastInterval = 0.4 * mLastInterval + 0.6 * interval;  // jump to new tempo
             mBpm.store((float)(60000.0 / mLastInterval), std::memory_order_relaxed);
         }
     }
