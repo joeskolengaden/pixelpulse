@@ -27,6 +27,8 @@ public:
 
 private:
     void run();
+    void runCapture();      // real ALSA capture (Linux) / stub elsewhere
+    void runTestSignal();   // synthetic audio for testing without hardware
 
     std::thread mThread;
     std::atomic<bool> mRun{false};

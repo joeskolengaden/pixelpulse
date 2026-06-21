@@ -2,6 +2,8 @@
 #include "AudioAnalyzer.h"
 
 #include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <vector>
 
 void AlsaCapture::start(const std::string& device, int sampleRate, AudioAnalyzer* analyzer) {
@@ -19,10 +21,38 @@ void AlsaCapture::stop() {
     mOk.store(false);
 }
 
+void AlsaCapture::run() {
+    if (mDevice == "test") { runTestSignal(); return; }
+    runCapture();
+}
+
+// Synthetic audio so the whole pipeline can be exercised with no hardware:
+// a swelling 60 Hz bass + a kick burst every 0.5 s (120 BPM). Paced to real time.
+void AlsaCapture::runTestSignal() {
+    const int block = 512;
+    std::vector<float> buf(block);
+    if (mAnalyzer) mAnalyzer->configure(mRate, 1024, mAnalyzer->numBands() > 0 ? mAnalyzer->numBands() : 8);
+    mOk.store(true);
+    long n = 0;
+    const int beatPeriod = mRate / 2;  // 0.5 s
+    while (mRun.load()) {
+        for (int j = 0; j < block; ++j, ++n) {
+            float bass = 0.28f * std::sin(2.f * (float)M_PI * 60.f * n / mRate);
+            float swell = 0.55f + 0.45f * std::sin(2.f * (float)M_PI * 0.2f * n / mRate);
+            int ph = (int)(n % beatPeriod);
+            float kick = (ph < 400) ? 0.6f * ((std::rand() / (float)RAND_MAX) * 2 - 1) * (1.f - ph / 400.f) : 0.f;
+            buf[j] = bass * swell + kick;
+        }
+        if (mAnalyzer) mAnalyzer->pushSamples(buf.data(), block);
+        std::this_thread::sleep_for(std::chrono::microseconds((long)(1000000.0 * block / mRate)));
+    }
+    mOk.store(false);
+}
+
 #if defined(__linux__)
 #include <alsa/asoundlib.h>
 
-void AlsaCapture::run() {
+void AlsaCapture::runCapture() {
     const snd_pcm_uframes_t period = 512;  // ~11ms @ 44.1k
     std::vector<int16_t> raw;
     std::vector<float> mono;
@@ -83,7 +113,7 @@ void AlsaCapture::run() {
 }
 
 #else  // non-Linux: no-op stub so the plugin still compiles for verification
-void AlsaCapture::run() {
+void AlsaCapture::runCapture() {
     while (mRun.load()) std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 #endif

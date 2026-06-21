@@ -120,10 +120,13 @@ function afApi(p){ return 'plugin.php?plugin=pixelpulse&page=' + p + '&nopage=1'
 var afBands = document.getElementById('af-bands');
 for (var i=0;i<8;i++){ var d=document.createElement('div'); afBands.appendChild(d); }
 // populate device list
+function afAddOpt(sel,val,txt){ if(sel.value!==val){ var o=document.createElement('option'); o.value=val; o.textContent=txt; sel.appendChild(o); } }
 fetch(afApi('devices.php')).then(function(r){return r.json();}).then(function(list){
   var sel=document.getElementById('af-device'); var cur=sel.value;
+  afAddOpt(sel,'test','Test signal (no hardware)');
+  afAddOpt(sel,'default','default');
   (list||[]).forEach(function(dev){ if(dev.id===cur)return; var o=document.createElement('option'); o.value=dev.id; o.textContent=dev.id+' — '+dev.name; sel.appendChild(o); });
-}).catch(function(){});
+}).catch(function(){ afAddOpt(document.getElementById('af-device'),'test','Test signal (no hardware)'); });
 // live meters
 function pct(v){ return Math.max(0,Math.min(100,Math.round(v*100)))+'%'; }
 setInterval(function(){
