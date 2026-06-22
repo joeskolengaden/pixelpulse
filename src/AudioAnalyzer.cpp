@@ -85,29 +85,61 @@ void AudioAnalyzer::analyzeWindow() {
     }
     std::copy(mMag.begin(), mMag.end(), mPrevMag.begin());
 
-    // AGC level
-    mLevelPeak = std::max(mLevelPeak * 0.9995f, rms);
-    float lvl = (mLevelPeak > 1e-6f) ? (rms / mLevelPeak) : 0.f;
     bool active = rms > mGate;
+
+    // Level: AGC normalizes loudness to 0..1 (adapts to the room); the AGC speed
+    // sets how fast the running peak recovers. AGC off = absolute, gain-driven.
+    const float decay = 0.999f + 0.00099f * (1.f - mAgcSpeed);  // 0.999 (fast) .. ~0.99999 (slow)
+    float lvl;
+    if (mAgcEnabled) {
+        mLevelPeak = std::max(mLevelPeak * decay, rms);
+        lvl = (mLevelPeak > 1e-6f) ? (rms / mLevelPeak) : 0.f;
+    } else {
+        lvl = std::min(1.f, rms * mGain * 6.0f);
+    }
     if (!active) lvl = 0.f;
 
-    // per-band energy, AGC'd
+    // per-band energy
     float grp[3] = {0, 0, 0};  // bass/mid/treble accumulators (by band thirds)
+    float bandV[MAX_BANDS] = {0};
     for (int b = 0; b < mNumBands; ++b) {
         float e = 0.f;
         for (int k = mBandLo[b]; k <= mBandHi[b]; ++k) e += mMag[k];
         e /= (mBandHi[b] - mBandLo[b] + 1);
-        mBandPeak[b] = std::max(mBandPeak[b] * 0.999f, e);
-        float v = active ? std::min(1.f, e / mBandPeak[b]) : 0.f;
-        mBands[b].store(v, std::memory_order_relaxed);
+        float v;
+        if (mAgcEnabled) {
+            mBandPeak[b] = std::max(mBandPeak[b] * decay, e);
+            v = active ? std::min(1.f, e / mBandPeak[b]) : 0.f;
+        } else {
+            v = active ? std::min(1.f, e * 4.0f) : 0.f;
+        }
+        bandV[b] = v;
         int g = b * 3 / mNumBands;
         if (g > 2) g = 2;
         grp[g] = std::max(grp[g], v);
     }
-    mBass.store(grp[0], std::memory_order_relaxed);
-    mMid.store(grp[1], std::memory_order_relaxed);
-    mTreble.store(grp[2], std::memory_order_relaxed);
-    mLevel.store(std::min(1.f, lvl), std::memory_order_relaxed);
+    // per-group trim (lets the user rebalance bass / mid / treble response)
+    grp[0] = std::min(1.f, grp[0] * mBassTrim);
+    grp[1] = std::min(1.f, grp[1] * mMidTrim);
+    grp[2] = std::min(1.f, grp[2] * mTrebleTrim);
+
+    // Smoothing: instant attack, eased release (so reactions breathe instead of
+    // flickering). mSmoothing 0 = raw, ~0.9 = slow decay.
+    const float sm = mSmoothing;
+    auto smo = [sm](float prev, float nw) { return nw >= prev ? nw : (prev * sm + nw * (1.f - sm)); };
+    mLvlS = smo(mLvlS, std::min(1.f, lvl));
+    mBassS = smo(mBassS, grp[0]);
+    mMidS = smo(mMidS, grp[1]);
+    mTrebS = smo(mTrebS, grp[2]);
+    for (int b = 0; b < mNumBands; ++b) {
+        float tg = (b < mNumBands / 3) ? mBassTrim : (b < 2 * mNumBands / 3 ? mMidTrim : mTrebleTrim);
+        mBandS[b] = smo(mBandS[b], std::min(1.f, bandV[b] * tg));
+        mBands[b].store(mBandS[b], std::memory_order_relaxed);
+    }
+    mBass.store(mBassS, std::memory_order_relaxed);
+    mMid.store(mMidS, std::memory_order_relaxed);
+    mTreble.store(mTrebS, std::memory_order_relaxed);
+    mLevel.store(mLvlS, std::memory_order_relaxed);
     mActive.store(active, std::memory_order_relaxed);
 
     // beat: flux over an adaptive average, with a refractory period

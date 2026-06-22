@@ -20,6 +20,13 @@
 		{ "key": "gain", "label": "Input gain", "type": "float", "default": 1.0, "min": 0.1, "max": 10, "step": 0.1, "group": "audio", "appliesLive": true, "widget": "slider" },
 		{ "key": "gate", "label": "Noise gate", "type": "float", "default": 0.02, "min": 0, "max": 0.3, "step": 0.005, "group": "audio", "appliesLive": true, "widget": "slider", "help": "Below this level is treated as silence." },
 		{ "key": "sensitivity", "label": "Beat sensitivity", "type": "float", "default": 1.5, "min": 1.05, "max": 3, "step": 0.05, "group": "audio", "appliesLive": true, "widget": "slider", "help": "Lower = more beats detected." },
+		{ "key": "input_channel", "label": "Input channel", "type": "enum", "default": "mix", "options": ["mix", "left", "right"], "group": "tuning", "appliesLive": true, "help": "Stereo mix, or just the left/right channel of the input." },
+		{ "key": "agc_enabled", "label": "Auto-gain (AGC)", "type": "bool", "default": true, "group": "tuning", "appliesLive": true, "help": "Normalize loudness to the room automatically. Off = absolute, set with Input gain." },
+		{ "key": "agc_speed", "label": "AGC speed", "type": "float", "default": 0.5, "min": 0, "max": 1, "step": 0.05, "group": "tuning", "appliesLive": true, "widget": "slider", "help": "How fast auto-gain adapts. Higher = snappier, lower = steadier." },
+		{ "key": "smoothing", "label": "Smoothing", "type": "float", "default": 0.0, "min": 0, "max": 0.95, "step": 0.05, "group": "tuning", "appliesLive": true, "widget": "slider", "help": "Eases the fall of reactions so they breathe instead of flicker (instant attack, slow release)." },
+		{ "key": "bass_trim", "label": "Bass trim", "type": "float", "default": 1.0, "min": 0, "max": 2, "step": 0.05, "group": "tuning", "appliesLive": true, "widget": "slider" },
+		{ "key": "mid_trim", "label": "Mid trim", "type": "float", "default": 1.0, "min": 0, "max": 2, "step": 0.05, "group": "tuning", "appliesLive": true, "widget": "slider" },
+		{ "key": "treble_trim", "label": "Treble trim", "type": "float", "default": 1.0, "min": 0, "max": 2, "step": 0.05, "group": "tuning", "appliesLive": true, "widget": "slider" },
 
 		{ "key": "channelsPerPixel", "label": "Channels per pixel", "type": "enum", "default": "3", "options": ["3", "4"], "group": "range", "appliesLive": true },
 		{ "key": "startChannel", "label": "Start channel", "type": "int", "default": 1, "min": 1, "max": 1048576, "step": 1, "group": "range", "appliesLive": true },

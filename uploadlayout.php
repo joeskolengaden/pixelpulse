@@ -13,6 +13,21 @@ function pp_summary($path) {
     return array('ok' => true, 'count' => (count($p) >= 3 ? intval($p[2]) : 0), 'loaded' => true);
 }
 
+// GET ?points=1 -> the normalized positions, so the settings page can preview
+// the active spatial mode without looking at the physical pixels.
+if (isset($_GET['points'])) {
+    $pts = array();
+    if (is_file($OUT)) {
+        $fh = fopen($OUT, 'r'); fgets($fh);  // skip header
+        while (($ln = fgets($fh)) !== false) {
+            $p = preg_split('/\s+/', trim($ln));
+            if (count($p) >= 7) $pts[] = array(round($p[3], 3) + 0, round($p[4], 3) + 0, round($p[6], 3) + 0);
+        }
+        fclose($fh);
+    }
+    echo json_encode(array('count' => count($pts), 'pts' => $pts)); exit;
+}
+
 if (empty($_FILES['layout'])) { echo json_encode(pp_summary($OUT)); exit; }
 if ($_FILES['layout']['error'] !== UPLOAD_ERR_OK) {
     echo json_encode(array('ok' => false, 'error' => 'upload failed')); exit;

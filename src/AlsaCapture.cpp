@@ -105,7 +105,9 @@ void AlsaCapture::runCapture() {
             if (n < 0) break;  // fatal - reopen
             for (snd_pcm_sframes_t i = 0; i < n; ++i) {
                 if (channels == 2) {
-                    mono[i] = (raw[i * 2] + raw[i * 2 + 1]) * 0.5f / 32768.f;
+                    if (mChMode == 1) mono[i] = raw[i * 2] / 32768.f;          // left only
+                    else if (mChMode == 2) mono[i] = raw[i * 2 + 1] / 32768.f;  // right only
+                    else mono[i] = (raw[i * 2] + raw[i * 2 + 1]) * 0.5f / 32768.f;  // mix
                 } else {
                     mono[i] = raw[i] / 32768.f;
                 }

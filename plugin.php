@@ -55,6 +55,10 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="meter"><span class="ml">Beat</span><span class="dot" id="af-beat"></span><span style="flex:1"></span><span style="font-size:12.5px;color:#6b7280">BPM <b id="af-bpm">–</b></span></div>
       <div class="bands" id="af-bands"></div>
       <div class="help" id="af-hint" style="margin-top:8px"></div>
+      <div id="af-prevwrap" style="display:none;margin-top:12px">
+        <div class="help" style="margin-bottom:5px">Spatial preview — your layout lit by the live audio (mode: <b id="af-prevmode">bloom</b>)</div>
+        <canvas id="af-preview" style="width:100%;height:200px;background:#0e1116;border-radius:8px;display:block"></canvas>
+      </div>
     </div>
   </div>
 
@@ -73,6 +77,19 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Input gain</div><div><?php echo afNum('gain', '1.0', '0.1', '10', '0.1'); ?></div>
       <div class="lab">Noise gate</div><div><?php echo afNum('gate', '0.02', '0', '0.3', '0.005'); ?></div>
       <div class="lab">Beat sensitivity</div><div><?php echo afNum('sensitivity', '1.5', '1.05', '3', '0.05'); ?></div>
+    </div></div>
+  </div>
+
+  <div class="card">
+    <div class="head"><span class="t">Audio tuning</span></div>
+    <div class="body"><div class="grid">
+      <div class="lab">Input channel</div><div><select onChange="SetPluginSetting('pixelpulse','input_channel',this.value,0,0);"><?php foreach (array('mix','left','right') as $m) echo "<option value='$m'" . (af_get('input_channel','mix')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">use one side if the mic is wired to L or R</span></div>
+      <div class="lab">Auto-gain (AGC) <?php echo afTog('agc_enabled', '1'); ?></div><div class="help">Normalize loudness to the room. Off = absolute (set with Input gain).</div>
+      <div class="lab">AGC speed</div><div><?php echo afNum('agc_speed', '0.5', '0', '1', '0.05'); ?></div>
+      <div class="lab">Smoothing</div><div><?php echo afNum('smoothing', '0', '0', '0.95', '0.05'); ?> <span class="help">eases the fall so reactions breathe</span></div>
+      <div class="lab">Bass trim</div><div><?php echo afNum('bass_trim', '1', '0', '2', '0.05', '&times;'); ?></div>
+      <div class="lab">Mid trim</div><div><?php echo afNum('mid_trim', '1', '0', '2', '0.05', '&times;'); ?></div>
+      <div class="lab">Treble trim</div><div><?php echo afNum('treble_trim', '1', '0', '2', '0.05', '&times;'); ?></div>
     </div></div>
   </div>
 
@@ -121,7 +138,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">drives effects by physical prop position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">drives effects by physical prop position</span></div>
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
       <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
     </div></div>
@@ -148,6 +165,40 @@ function afUpload(){
   }).catch(function(){ el.textContent='upload failed'; el.style.color='#e24b4a'; });
 }
 afRefreshLayout();
+// live spatial preview: the layout lit by the on-device audio, current mode
+var afPts=null, afCanvas=document.getElementById('af-preview');
+function afHsv(h,s,v){ h=((h%360)+360)%360; var c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,r=0,g=0,b=0;
+  if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}
+  return 'rgb('+Math.round((r+m)*255)+','+Math.round((g+m)*255)+','+Math.round((b+m)*255)+')'; }
+var afRing={on:false,ph:0,latch:false,t:performance.now()};
+function afPrevLoop(){
+  requestAnimationFrame(afPrevLoop);
+  if(!afPts||!afCanvas) return;
+  var now=performance.now(), dt=Math.min(0.2,(now-afRing.t)/1000); afRing.t=now;
+  var dpr=Math.min(2,window.devicePixelRatio||1), W=afCanvas.clientWidth, H=afCanvas.clientHeight;
+  if(!W) return;
+  if(afCanvas.width!==Math.round(W*dpr)){ afCanvas.width=Math.round(W*dpr); afCanvas.height=Math.round(H*dpr); }
+  var ctx=afCanvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  var s=window.afLast||{level:0,beat:0,bass:0,bands:[]};
+  var modeEl=document.getElementById('af-spatialmode'), mode=modeEl?modeEl.value:'bloom';
+  document.getElementById('af-prevmode').textContent=mode;
+  var bands=s.bands||[], nb=bands.length||8, pad=8, sw=W-2*pad, sh=H-2*pad;
+  if(mode==='bloom'){ if(s.beat>0.5&&!afRing.latch){afRing.latch=true;afRing.on=true;afRing.ph=0;} if(s.beat<0.2)afRing.latch=false; if(afRing.on){afRing.ph+=dt/0.6; if(afRing.ph>1.5)afRing.on=false;} }
+  for(var i=0;i<afPts.length;i++){
+    var p=afPts[i], nx=p[0], ny=p[1], dist=p[2], br=0, hue=0, bi;
+    if(mode==='bloom'){ if(afRing.on) br=Math.exp(-Math.pow((dist-afRing.ph)/0.16,2)); br*=(0.45+0.55*s.level); hue=210-170*s.bass; }
+    else if(mode==='spectrum'){ bi=Math.min(nb-1,Math.floor(nx*nb)); br=bands[bi]||0; hue=280*nx; }
+    else if(mode==='vu'){ br=(ny<=s.level)?(0.4+0.6*(1-(s.level-ny))):0; hue=120*(1-ny); }
+    else { bi=Math.min(nb-1,Math.floor(dist*nb)); br=bands[bi]||0; hue=200+100*dist; }
+    if(br<0)br=0; if(br>1)br=1;
+    ctx.globalAlpha=0.16+0.84*br; ctx.fillStyle=afHsv(hue,1,Math.max(0.05,br));
+    ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*br, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+fetch(afApi('uploadlayout.php')+'&points=1').then(function(r){return r.json();}).then(function(d){
+  if(d&&d.count>0&&d.pts){ afPts=d.pts; document.getElementById('af-prevwrap').style.display='block'; afPrevLoop(); }
+}).catch(function(){});
 // build band bars
 var afBands = document.getElementById('af-bands');
 for (var i=0;i<8;i++){ var d=document.createElement('div'); afBands.appendChild(d); }
@@ -163,6 +214,7 @@ fetch(afApi('devices.php')).then(function(r){return r.json();}).then(function(li
 function pct(v){ return Math.max(0,Math.min(100,Math.round(v*100)))+'%'; }
 setInterval(function(){
   fetch(afApi('status.php')).then(function(r){return r.json();}).then(function(s){
+    window.afLast=s;
     var dev=document.getElementById('af-dev'), txt=document.getElementById('af-devtxt');
     dev.className='dot'+(s.deviceOk?' on':''); txt.textContent = s.deviceOk ? (s.active?'hearing audio':'device open (silent)') : 'no audio device';
     document.getElementById('af-level').style.width=pct(s.level);

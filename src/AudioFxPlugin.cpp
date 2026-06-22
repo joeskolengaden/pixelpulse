@@ -314,18 +314,26 @@ private:
         if (now - mLastReload >= std::chrono::milliseconds(500)) {
             mLastReload = now;
             std::string prevDev = mDevice;
-            int prevRate = mSampleRate;
+            int prevRate = mSampleRate, prevCh = mChMode;
             reloadSettings();
             applySettings();
             loadLayoutIfChanged();
-            mAnalyzer.setGain(mGain);
-            mAnalyzer.setGate(mGate);
-            mAnalyzer.setSensitivity(mSensitivity);
-            if (mDevice != prevDev || mSampleRate != prevRate) restartCapture();
+            pushAnalyzerParams();
+            if (mDevice != prevDev || mSampleRate != prevRate || mChMode != prevCh) restartCapture();
         }
+    }
+    void pushAnalyzerParams() {
+        mAnalyzer.setGain(mGain);
+        mAnalyzer.setGate(mGate);
+        mAnalyzer.setSensitivity(mSensitivity);
+        mAnalyzer.setSmoothing(mSmoothing);
+        mAnalyzer.setAgc(mAgcEnabled, mAgcSpeed);
+        mAnalyzer.setTrims(mBassTrim, mMidTrim, mTrebleTrim);
     }
     void restartCapture() {
         mAnalyzer.configure(mSampleRate, 1024, 8);
+        pushAnalyzerParams();
+        mCapture.setChannelMode(mChMode);
         mCapture.start(mDevice, mSampleRate, &mAnalyzer);
     }
     void writeStatus() {
@@ -358,6 +366,14 @@ private:
         mGain = (float)toDouble(cfg("gain"), 1.0);
         mGate = (float)toDouble(cfg("gate"), 0.02);
         mSensitivity = (float)std::max(1.05, toDouble(cfg("sensitivity"), 1.5));
+        mSmoothing = (float)toDouble(cfg("smoothing"), 0.0);
+        mAgcEnabled = toLong(cfg("agc_enabled"), 1) != 0;
+        mAgcSpeed = (float)toDouble(cfg("agc_speed"), 0.5);
+        mBassTrim = (float)toDouble(cfg("bass_trim"), 1.0);
+        mMidTrim = (float)toDouble(cfg("mid_trim"), 1.0);
+        mTrebleTrim = (float)toDouble(cfg("treble_trim"), 1.0);
+        std::string ich = cfg("input_channel");
+        mChMode = (ich == "left") ? 1 : (ich == "right") ? 2 : 0;
         mChPerPix = std::min<long>(8, std::max<long>(1, toLong(cfg("channelsPerPixel"), 3)));
         mStart = toLong(cfg("startChannel"), 1);
         mCount = std::max<long>(0, toLong(cfg("channelCount"), 1500));
@@ -391,6 +407,9 @@ private:
     std::string mDevice = "default";
     int mSampleRate = 44100;
     float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;
+    float mSmoothing = 0.0f, mAgcSpeed = 0.5f, mBassTrim = 1.0f, mMidTrim = 1.0f, mTrebleTrim = 1.0f;
+    bool mAgcEnabled = true;
+    int mChMode = 0;  // input channel: 0 mix, 1 left, 2 right
     long mChPerPix = 3, mStart = 1, mCount = 1500;
 
     bool mBrEnabled = true;

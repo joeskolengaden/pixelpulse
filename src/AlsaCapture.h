@@ -24,6 +24,7 @@ public:
     void stop();
     bool ok() const { return mOk.load(); }
     const std::string& device() const { return mDevice; }
+    void setChannelMode(int m) { mChMode = m; }  // 0 mix, 1 left, 2 right
 
 private:
     void run();
@@ -35,5 +36,6 @@ private:
     std::atomic<bool> mOk{false};
     std::string mDevice;
     int mRate = 44100;
+    int mChMode = 0;  // 0 mix, 1 left, 2 right
     AudioAnalyzer* mAnalyzer = nullptr;
 };
