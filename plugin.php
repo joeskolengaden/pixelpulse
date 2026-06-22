@@ -55,9 +55,9 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="meter"><span class="ml">Beat</span><span class="dot" id="af-beat"></span><span style="flex:1"></span><span style="font-size:12.5px;color:#6b7280">BPM <b id="af-bpm">–</b></span></div>
       <div class="bands" id="af-bands"></div>
       <div class="help" id="af-hint" style="margin-top:8px"></div>
-      <div id="af-prevwrap" style="display:none;margin-top:12px">
-        <div class="help" style="margin-bottom:5px">Spatial preview — your layout lit by the live audio (mode: <b id="af-prevmode">bloom</b>)</div>
-        <canvas id="af-preview" style="width:100%;height:200px;background:#0e1116;border-radius:8px;display:block"></canvas>
+      <div id="af-prevwrap" style="display:none;margin-top:12px;text-align:center">
+        <div class="help" style="margin-bottom:5px;text-align:left">Spatial preview — your layout lit by the live audio (mode: <b id="af-prevmode">bloom</b>)</div>
+        <canvas id="af-preview" width="120" height="200" style="background:#0e1116;border-radius:8px;display:inline-block;max-width:100%"></canvas>
       </div>
     </div>
   </div>
@@ -208,6 +208,8 @@ function afPrevLoop(){
   document.getElementById('af-prevmode').textContent=mode;
   var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
   var pad=8, sw=W-2*pad, sh=H-2*pad;
+  ctx.fillStyle='rgba(150,162,178,0.28)';                 // base layer: the layout shape, always visible
+  for(var j=0;j<afPts.length;j++){ ctx.beginPath(); ctx.arc(pad+afPts[j][0]*sw, pad+(1-afPts[j][1])*sh, 1.2, 0, 6.283); ctx.fill(); }
   var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;} if(beat<0.2)afSt.latch=false;
   afSt.chase+=dt*(0.12+0.5*lvl); afSt.wave+=dt*0.6;
   if(mode==='bloom'){ if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;} }
@@ -240,7 +242,14 @@ function afPrevLoop(){
   ctx.globalAlpha=1;
 }
 fetch(afApi('uploadlayout.php')+'&points=1').then(function(r){return r.json();}).then(function(d){
-  if(d&&d.count>0&&d.pts){ afPts=d.pts; document.getElementById('af-prevwrap').style.display='block'; afPrevLoop(); }
+  if(d&&d.count>0&&d.pts){ afPts=d.pts;
+    document.getElementById('af-prevwrap').style.display='block';
+    var ar=(d.ar&&d.ar>0)?d.ar:0.6;                      // real width/height, frame the true shape
+    var maxH=320, maxW=(afCanvas.parentNode.clientWidth||580)-2;
+    var H=maxH, Wd=H*ar; if(Wd>maxW){ Wd=maxW; H=Wd/ar; }
+    afCanvas.style.width=Math.round(Wd)+'px'; afCanvas.style.height=Math.round(H)+'px';
+    afPrevLoop();
+  }
 }).catch(function(){});
 // build band bars
 var afBands = document.getElementById('af-bands');

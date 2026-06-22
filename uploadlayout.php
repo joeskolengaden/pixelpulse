@@ -16,16 +16,17 @@ function pp_summary($path) {
 // GET ?points=1 -> the normalized positions, so the settings page can preview
 // the active spatial mode without looking at the physical pixels.
 if (isset($_GET['points'])) {
-    $pts = array();
+    $pts = array(); $ar = 0;
     if (is_file($OUT)) {
-        $fh = fopen($OUT, 'r'); fgets($fh);  // skip header
+        $fh = fopen($OUT, 'r'); $hdr = fgets($fh);
+        $h = preg_split('/\s+/', trim($hdr)); if (count($h) >= 4) $ar = floatval($h[3]);
         while (($ln = fgets($fh)) !== false) {
             $p = preg_split('/\s+/', trim($ln));
             if (count($p) >= 7) $pts[] = array(round($p[3], 3) + 0, round($p[4], 3) + 0, round($p[6], 3) + 0);
         }
         fclose($fh);
     }
-    echo json_encode(array('count' => count($pts), 'pts' => $pts)); exit;
+    echo json_encode(array('count' => count($pts), 'ar' => $ar, 'pts' => $pts)); exit;
 }
 
 if (empty($_FILES['layout'])) { echo json_encode(pp_summary($OUT)); exit; }
@@ -71,7 +72,8 @@ $maxd = 0; foreach ($props as $p) { $dd = hypot($p['x'] - $cx, $p['y'] - $cy); i
 if ($maxd <= 0) $maxd = 1;
 function pp_nrm($v, $a, $b) { return ($b - $a) == 0 ? 0.0 : ($v - $a) / ($b - $a); }
 
-$lines = array('PIXELPULSE_LAYOUT 1 ' . count($props));
+$ar = ($maxY - $minY) != 0 ? ($maxX - $minX) / ($maxY - $minY) : 1.0;  // real width/height
+$lines = array(sprintf('PIXELPULSE_LAYOUT 2 %d %.5f', count($props), $ar));
 foreach ($props as $p) {
     $lines[] = sprintf('%d %d %d %.4f %.4f %.4f %.4f', $p['s'], $p['c'], $p['st'],
         pp_nrm($p['x'], $minX, $maxX), pp_nrm($p['y'], $minY, $maxY), pp_nrm($p['z'], $minZ, $maxZ),

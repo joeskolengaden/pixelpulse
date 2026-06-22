@@ -346,6 +346,7 @@ private:
         std::string magic; int ver = 0, n = 0;
         in >> magic >> ver >> n;
         if (magic != "PIXELPULSE_LAYOUT" || n <= 0 || n > 500000) { mLayout.clear(); return; }
+        if (ver >= 2) { float ar = 1.f; in >> ar; }  // aspect ratio header token (preview only)
         std::vector<LayoutProp> tmp; tmp.reserve(n);
         for (int i = 0; i < n; ++i) {
             LayoutProp p;
