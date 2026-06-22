@@ -161,7 +161,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">22 styles, driven by physical LED position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">27 styles, driven by physical LED position</span></div>
       <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
       <div class="lab">Auto design change</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_autocycle',this.value,0,0);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music</span></div>
       <div class="lab">Change every</div><div><?php echo afNum('spatial_cyclesecs', '20', '3', '300', '1', 's'); ?></div>
@@ -232,7 +232,7 @@ function afPalCol(name,t,br){ var P=afPals[name]; if(!P) return null; t-=Math.fl
   var i=0; while(i<P.length-1 && t>P[i+1][0]) i++;
   var a=P[i], b=P[i<P.length-1?i+1:i], span=b[0]-a[0], f=span>1e-4?(t-a[0])/span:0; if(f<0)f=0; if(f>1)f=1;
   return 'rgb('+Math.round((a[1]+(b[1]-a[1])*f)*br)+','+Math.round((a[2]+(b[2]-a[2])*f)*br)+','+Math.round((a[3]+(b[3]-a[3])*f)*br)+')'; }
-var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[]};
+var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[]};
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
   if(!afPts) return;
@@ -257,6 +257,11 @@ function afPrevLoop(){
   afSt.bursts.forEach(function(b){b.age+=dt;}); afSt.bursts=afSt.bursts.filter(function(b){return b.age<=1.2;});
   if(trig){ for(var r=0;r<afSt.rain.length;r++) if(afSt.rain[r]<0){afSt.rain[r]=1.05;break;} }
   for(var r2=0;r2<afSt.rain.length;r2++) if(afSt.rain[r2]>=0){afSt.rain[r2]-=dt/1.1; if(afSt.rain[r2]<-0.1)afSt.rain[r2]=-1;}
+  if(lvl>afSt.vu)afSt.vu=lvl; else afSt.vu-=1.2*dt; if(afSt.vu<0)afSt.vu=0;
+  if(afSt.vu>afSt.vuPeak)afSt.vuPeak=afSt.vu; else afSt.vuPeak-=0.35*dt; if(afSt.vuPeak<0)afSt.vuPeak=0;
+  afSt.wfAccum+=dt; if(afSt.wfAccum>=0.04){ afSt.wfAccum-=0.04; afSt.wf.push(bands.slice(0,nb)); if(afSt.wf.length>64)afSt.wf.shift(); }
+  if(trig&&afSt.puddles.length<4){ var pq=afPts[Math.floor(Math.random()*afPts.length)]; afSt.puddles.push({x:pq[0],y:pq[1],age:0}); }
+  afSt.puddles.forEach(function(pu){pu.age+=dt;}); afSt.puddles=afSt.puddles.filter(function(pu){return pu.age<=1.4;});
   var dom=0,dmax=0; for(var b3=0;b3<nb;b3++){ if((bands[b3]||0)>dmax){dmax=bands[b3];dom=b3;} }
   var chase=afSt.chase%1;
   var pal=(s.palette&&s.palette!=='auto'&&afPals[s.palette])?s.palette:null;
@@ -284,7 +289,12 @@ function afPrevLoop(){
       case 'comet': var cd=afSt.comet-nx; if(cd<0)cd+=1; br=(cd<0.35)?(1-cd/0.35)*(0.4+0.6*lvl):0; hue=190+90*cd; break;
       case 'plasma': var pv=Math.sin(nx*6+afSt.wave*3)+Math.sin(ny*6+afSt.wave*2)+Math.sin((nx+ny)*5+afSt.wave); pv=(pv/3+1)*0.5; br=(0.3+0.7*lvl)*(0.4+0.6*pv); hue=360*pv; break;
       case 'scan': var sc=0.5+0.5*Math.sin(afSt.scan*6.2832), sd=Math.abs(ny-sc); br=Math.exp(-Math.pow(sd/0.07,2))*(0.4+0.6*lvl); hue=30*sc; break;
-      default: var c1=Math.sin(i*12.9898)*43758.5453; c1-=Math.floor(c1); br=(c1<0.15+0.35*beat)?beat:0; var c2=Math.sin(i*78.233)*43758.5453; c2-=Math.floor(c2); hue=360*c2; break;
+      case 'confetti': var c1=Math.sin(i*12.9898)*43758.5453; c1-=Math.floor(c1); br=(c1<0.15+0.35*beat)?beat:0; var c2=Math.sin(i*78.233)*43758.5453; c2-=Math.floor(c2); hue=360*c2; break;
+      case 'gravimeter': br=(ny<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-ny))):0; if(Math.abs(ny-afSt.vuPeak)<0.02)br=1; hue=360*ny; break;
+      case 'gravcenter': var dc=Math.abs(ny-0.5)*2; br=(dc<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-dc))):0; if(Math.abs(dc-afSt.vuPeak)<0.03)br=1; hue=360*dc; break;
+      case 'waterfall': if(afSt.wf.length){ var ti=Math.min(afSt.wf.length-1,Math.floor(ny*afSt.wf.length)); var row=afSt.wf[afSt.wf.length-1-ti]; if(row){ var wbi=Math.min(nb-1,Math.floor(nx*nb)); br=row[wbi]||0; } } hue=280*nx; break;
+      case 'djlight': var e; if(dist<0.34){e=bass;hue=0;}else if(dist<0.67){e=s.mid||0;hue=120;}else{e=treble;hue=240;} br=0.12+0.88*e; break;
+      default: afSt.puddles.forEach(function(pu){ var rd=Math.hypot(nx-pu.x,ny-pu.y), radius=pu.age*0.3; if(radius>0&&rd<radius) br+=(1-rd/radius)*(1-pu.age/1.4); }); br=Math.min(1,br); hue=360*nx; break;
     }
     if(br<0)br=0; if(br>1)br=1;
     var col = pal ? afPalCol(pal, hue/360, Math.max(0.05,br)) : afHsv(hue,sat,Math.max(0.05,br));

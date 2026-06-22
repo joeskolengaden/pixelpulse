@@ -89,8 +89,10 @@ const char* const kLayoutPath = "/home/fpp/media/config/pixelpulse_layout.txt";
 const char* const kSpatialModes[] = {
     "bloom", "spectrum", "vu", "radial", "pulse", "spike", "chase",
     "sparkle", "wave", "fireworks", "rain", "strobe", "colorwash", "grow",
-    "spin", "bars", "ripple", "fire", "comet", "plasma", "scan", "confetti"};
-const int kNumSpatialModes = 22;
+    "spin", "bars", "ripple", "fire", "comet", "plasma", "scan", "confetti",
+    "gravimeter", "gravcenter", "waterfall", "djlight", "puddles"};
+const int kNumSpatialModes = 27;
+const int kWfT = 64;  // waterfall (spectrogram) history depth
 int spatialModeIndex(const std::string& s) {
     for (int i = 0; i < kNumSpatialModes; ++i)
         if (s == kSpatialModes[i]) return i + 1;
@@ -100,19 +102,19 @@ const char* spatialModeName(int idx) {
     return (idx >= 1 && idx <= kNumSpatialModes) ? kSpatialModes[idx - 1] : "bloom";
 }
 // Curated order the auto-cycle walks through (1-based mode indices).
-const int kCycleList[] = {1, 5, 15, 7, 17, 9, 16, 10, 20, 2, 18, 19, 8, 11, 21, 4, 13, 22};
-const int kCycleLen = 18;
+const int kCycleList[] = {1, 5, 15, 23, 7, 17, 9, 26, 16, 10, 25, 20, 2, 18, 27, 19, 8, 24, 11, 21, 4, 13, 22};
+const int kCycleLen = 23;
 
 // "Smart" auto-DJ: the live music is classified into one of these categories,
 // each with a pool of the designs that suit it best (1-based mode indices).
 const char* const kMusicTypes[] = {"dance", "ambient", "bass", "bright", "groove"};
 const int kNumMusicTypes = 5;
 const int kSmartPools[5][6] = {
-    {1, 10, 12, 6, 16, 5},    // dance/EDM   : bloom, fireworks, strobe, spike, bars, pulse
+    {1, 10, 26, 6, 23, 5},    // dance/EDM   : bloom, fireworks, djlight, spike, gravimeter, pulse
     {9, 20, 13, 17, 15, 14},  // ambient     : wave, plasma, colorwash, ripple, spin, grow
-    {5, 1, 16, 14, 19, 3},    // bass-heavy  : pulse, bloom, bars, grow, comet, vu
-    {8, 22, 2, 21, 7, 17},    // bright/pop  : sparkle, confetti, spectrum, scan, chase, ripple
-    {7, 2, 3, 19, 4, 16},     // groove      : chase, spectrum, vu, comet, radial, bars
+    {5, 1, 23, 24, 19, 3},    // bass-heavy  : pulse, bloom, gravimeter, gravcenter, comet, vu
+    {8, 22, 27, 25, 7, 17},   // bright/pop  : sparkle, confetti, puddles, waterfall, chase, ripple
+    {7, 2, 25, 19, 16, 26},   // groove      : chase, spectrum, waterfall, comet, bars, djlight
 };
 const int kSmartPoolLen = 6;
 
@@ -141,6 +143,22 @@ int paletteIndex(const std::string& s) {
 }
 // category -> palette name index for the smart auto-DJ (dance/ambient/bass/bright/groove)
 const int kCatPalette[5] = {6, 5, 7, 9, 2};  // party, aurora, lava, sherbet, ocean
+
+// Cooperative gate with the "credits" plugin: when the device is out of credits
+// it writes "1" to /dev/shm/credits_block. We honour it and bail out so the
+// blackout holds no matter which plugin FPP runs last (plugins load in readdir
+// order, so we can't rely on ordering). Cached ~100ms to keep it off the hot path.
+inline bool creditsBlocked() {
+    static std::chrono::steady_clock::time_point last;
+    static bool cached = false, inited = false;
+    auto now = std::chrono::steady_clock::now();
+    if (!inited || now - last >= std::chrono::milliseconds(100)) {
+        inited = true; last = now; cached = false;
+        FILE* f = fopen("/dev/shm/credits_block", "r");
+        if (f) { cached = (fgetc(f) == '1'); fclose(f); }
+    }
+    return cached;
+}
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -162,6 +180,7 @@ public:
         maybeReload();
         writeStatus();
         if (!mEnabled || !mSwitchOn || d == nullptr) return;
+        if (creditsBlocked()) return;   // out of credits -> leave the buffer dark
         if (!shouldModify()) return;
 
         applySpeed();  // Phase 3: audio -> playback speed (light-only sequences)
@@ -383,10 +402,29 @@ private:
             br = (0.3f + 0.7f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
         case 21: { float scan = 0.5f + 0.5f * std::sin(mScanPhase * 6.2832f); float dd = std::fabs(p.ny - scan);
             br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0 + 30.0 * scan; } break;
-        default: { float h1 = std::fmod(std::sin(p.ch * 12.9898f) * 43758.5453f, 1.f); if (h1 < 0) h1 += 1.f;
+        case 22: { float h1 = std::fmod(std::sin(p.ch * 12.9898f) * 43758.5453f, 1.f); if (h1 < 0) h1 += 1.f;  // confetti
             br = (h1 < 0.15f + 0.35f * beat) ? beat : 0.f;
             float h2 = std::fmod(std::sin(p.ch * 78.233f) * 43758.5453f, 1.f); if (h2 < 0) h2 += 1.f;
             hue = 360.0 * h2; } break;
+        case 23:  // gravimeter - VU bar with gravity + a peak that lingers
+            br = (p.ny <= mVu) ? (0.4f + 0.6f * (1.f - (mVu - p.ny))) : 0.f;
+            if (std::fabs(p.ny - mVuPeak) < 0.02f) br = 1.f;
+            hue = 360.0 * p.ny; break;
+        case 24: { float dc = std::fabs(p.ny - 0.5f) * 2.f;  // gravcenter - mirrored from the middle
+            br = (dc <= mVu) ? (0.4f + 0.6f * (1.f - (mVu - dc))) : 0.f;
+            if (std::fabs(dc - mVuPeak) < 0.03f) br = 1.f;
+            hue = 360.0 * dc; } break;
+        case 25: { int ti = (int)(p.ny * (kWfT - 1)); if (ti < 0) ti = 0; if (ti >= kWfT) ti = kWfT - 1;  // waterfall
+            int bi = (int)(p.nx * nb); if (bi < 0) bi = 0; if (bi >= nb) bi = nb - 1;
+            int idx = (mWfHead - ti) % kWfT; if (idx < 0) idx += kWfT;
+            br = mWaterfall[idx][bi]; hue = 280.0 * p.nx; } break;
+        case 26: { float dd = p.dist; float e;  // djlight - bass/mid/treble rings out from centre
+            if (dd < 0.34f) { e = bass; hue = 0.0; } else if (dd < 0.67f) { e = mAnalyzer.mid(); hue = 120.0; } else { e = treble; hue = 240.0; }
+            br = 0.12f + 0.88f * e; } break;
+        default: { for (const auto& pu : mPuddles) if (pu.on) {  // puddles - pools pop on beats and soak out
+            float rd = std::hypot(p.nx - pu.x, p.ny - pu.y), radius = pu.age * 0.3f;
+            if (radius > 0.f && rd < radius) br += (1.f - rd / radius) * (1.f - pu.age / 1.4f); }
+            br = std::min(1.f, br); hue = 360.0 * p.nx; } break;
         }
         br *= mSpatialIntensity / 100.f;
         if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
@@ -454,6 +492,19 @@ private:
         for (auto& b : mBursts) if (b.on) { b.age += dt; if (b.age > 1.2f) b.on = false; }
         if (beatTrig) for (auto& rf : mRainFront) if (rf < 0.f) { rf = 1.05f; break; }
         for (auto& rf : mRainFront) if (rf >= 0.f) { rf -= dt / 1.1f; if (rf < -0.1f) rf = -1.f; }
+        // gravity VU: rises to the level instantly, falls under gravity; peak lingers
+        if (level > mVu) mVu = level; else mVu -= 1.2f * dt; if (mVu < 0.f) mVu = 0.f;
+        if (mVu > mVuPeak) mVuPeak = mVu; else mVuPeak -= 0.35f * dt; if (mVuPeak < 0.f) mVuPeak = 0.f;
+        // waterfall: push the current spectrum into the scrolling history ~25x/sec
+        mWfAccum += dt;
+        if (mWfAccum >= 0.04f) { mWfAccum -= 0.04f; mWfHead = (mWfHead + 1) % kWfT;
+            for (int b = 0; b < 16; ++b) mWaterfall[mWfHead][b] = (b < nb) ? mAnalyzer.band(b) : 0.f; }
+        // puddles: spawn at a random LED on each beat, then age out
+        if (beatTrig && !mNodes.empty()) {
+            const LayoutNode& q = mNodes[std::rand() % (int)mNodes.size()];
+            for (auto& pu : mPuddles) if (!pu.on) { pu.on = true; pu.age = 0.f; pu.x = q.nx; pu.y = q.ny; break; }
+        }
+        for (auto& pu : mPuddles) if (pu.on) { pu.age += dt; if (pu.age > 1.4f) pu.on = false; }
         int dom = 0; float dmax = 0.f;  // dominant band (for colorwash)
         for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
 
@@ -742,6 +793,12 @@ private:
     float mRingPhase = 0.f, mChasePhase = 0.f, mWavePhase = 0.f;
     float mSpinPhase = 0.f, mRipplePhase = 0.f, mCometPhase = 0.f, mScanPhase = 0.f;
     float mRainFront[3] = {-1.f, -1.f, -1.f};
+    // audio meters (phase 2): gravity VU, waterfall spectrogram, puddles
+    float mVu = 0.f, mVuPeak = 0.f, mWfAccum = 0.f;
+    float mWaterfall[kWfT][16] = {};
+    int mWfHead = 0;
+    struct Puddle { float x = 0, y = 0, age = 0; bool on = false; };
+    Puddle mPuddles[4];
     // smart auto-DJ: live music profile + selection state
     float mAvgLevel = 0.4f, mAvgBass = 0.3f, mAvgMid = 0.3f, mAvgTreble = 0.3f, mAvgBeat = 0.3f;
     float mSilenceT = 0.f, mSmartTimer = 0.f;
