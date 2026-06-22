@@ -58,12 +58,17 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
           <div class="bands" id="af-bands"></div>
           <div class="help" id="af-hint" style="margin-top:8px"></div>
         </div>
-        <div id="af-prevwrap" style="display:none;text-align:center">
-          <div class="help" style="margin-bottom:5px;text-align:left;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <select id="af-prevsrc" style="font-size:12px;padding:2px 6px"><option value="live">Live output</option><option value="effect">Effect preview</option></select>
-            <span id="af-prevmode">bloom</span>
+        <div id="af-prevwrap" style="display:none">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+            <div>
+              <div class="help" style="margin-bottom:4px">Playing now <span id="af-live-stat" style="opacity:.6"></span></div>
+              <canvas id="af-preview-live" width="100" height="200" style="background:#0e1116;border-radius:8px;display:block;max-width:100%"></canvas>
+            </div>
+            <div>
+              <div class="help" style="margin-bottom:4px">Audio effect · <b id="af-prevmode">bloom</b></div>
+              <canvas id="af-preview-fx" width="100" height="200" style="background:#0e1116;border-radius:8px;display:block;max-width:100%"></canvas>
+            </div>
           </div>
-          <canvas id="af-preview" width="120" height="240" style="background:#0e1116;border-radius:8px;display:inline-block;max-width:100%"></canvas>
         </div>
       </div>
     </div>
@@ -198,53 +203,39 @@ function afCalibrate(btn){
   },100);
 }
 // live spatial preview: the layout lit by the on-device audio, current mode
-var afPts=null, afGroups=[], afCanvas=document.getElementById('af-preview');
+var afPts=null, afGroups=[], afCanvasLive=document.getElementById('af-preview-live'), afCanvasFx=document.getElementById('af-preview-fx');
 function afHsv(h,s,v){ h=((h%360)+360)%360; var c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,r=0,g=0,b=0;
   if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}
   return 'rgb('+Math.round((r+m)*255)+','+Math.round((g+m)*255)+','+Math.round((b+m)*255)+')'; }
 var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[]};
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
-  if(!afPts||!afCanvas) return;
+  if(!afPts) return;
   var now=performance.now(), dt=Math.min(0.2,(now-afSt.t)/1000); afSt.t=now;
-  var dpr=Math.min(2,window.devicePixelRatio||1), W=afCanvas.clientWidth, H=afCanvas.clientHeight;
-  if(!W) return;
-  if(afCanvas.width!==Math.round(W*dpr)){ afCanvas.width=Math.round(W*dpr); afCanvas.height=Math.round(H*dpr); }
-  var ctx=afCanvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   var s=window.afLast||{level:0,beat:0,bass:0,treble:0,bands:[]};
   var mode=s.spatialMode||((document.getElementById('af-spatialmode')||{}).value)||'bloom';
-  var src=(document.getElementById('af-prevsrc')||{}).value||'live';
-  var frame=window.afFrame, useLive=(src==='live' && frame && frame.length>=afPts.length-2);
-  document.getElementById('af-prevmode').textContent=useLive ? 'actual output on the lights'
-    : (mode+(s.musicType?(' · music: '+s.musicType):'')+(src==='live'?' (start playback to see live output)':''));
+  var frame=window.afFrame, haveLive=(frame && frame.length>=afPts.length-2);
+  document.getElementById('af-prevmode').textContent=mode+(s.musicType?(' · '+s.musicType):'');
+  var ls=document.getElementById('af-live-stat'); if(ls) ls.textContent=haveLive?'':'(play a sequence)';
   var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
-  var pad=8, sw=W-2*pad, sh=H-2*pad;
-  ctx.fillStyle='rgba(150,162,178,0.26)';                 // base layer: the whole layout shape, always visible
-  for(var j=0;j<afPts.length;j++){ ctx.beginPath(); ctx.arc(pad+afPts[j][0]*sw, pad+(1-afPts[j][1])*sh, 1.1, 0, 6.283); ctx.fill(); }
   var gsel=document.getElementById('af-spatialgroup'), gval=gsel?gsel.value:'(all)';
   var gidx=afGroups.indexOf(gval), gfilter=(gval!=='(all)'&&gidx>=0), gbit=gidx>=0?(1<<gidx):0;
+  // advance shared effect state once per frame
   var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;} if(beat<0.2)afSt.latch=false;
   afSt.chase+=dt*(0.12+0.5*lvl); afSt.wave+=dt*0.6;
   afSt.spin+=dt*(0.08+0.25*lvl); afSt.spin-=Math.floor(afSt.spin);
   afSt.ripple+=dt*(0.25+0.6*lvl); afSt.ripple-=Math.floor(afSt.ripple);
   afSt.comet+=dt*(0.22+0.5*lvl); afSt.comet-=Math.floor(afSt.comet);
   afSt.scan+=dt*(0.25+0.6*lvl); afSt.scan-=Math.floor(afSt.scan);
-  if(mode==='bloom'){ if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;} }
-  if(mode==='fireworks'){ if(trig&&afSt.bursts.length<5){ var q=afPts[Math.floor(Math.random()*afPts.length)]; afSt.bursts.push({x:q[0],y:q[1],age:0}); } afSt.bursts.forEach(function(b){b.age+=dt;}); afSt.bursts=afSt.bursts.filter(function(b){return b.age<=1.2;}); }
-  if(mode==='rain'){ if(trig){ for(var r=0;r<afSt.rain.length;r++) if(afSt.rain[r]<0){afSt.rain[r]=1.05;break;} } for(var r2=0;r2<afSt.rain.length;r2++) if(afSt.rain[r2]>=0){afSt.rain[r2]-=dt/1.1; if(afSt.rain[r2]<-0.1)afSt.rain[r2]=-1;} }
+  if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;}
+  if(trig&&afSt.bursts.length<5){ var q=afPts[Math.floor(Math.random()*afPts.length)]; afSt.bursts.push({x:q[0],y:q[1],age:0}); }
+  afSt.bursts.forEach(function(b){b.age+=dt;}); afSt.bursts=afSt.bursts.filter(function(b){return b.age<=1.2;});
+  if(trig){ for(var r=0;r<afSt.rain.length;r++) if(afSt.rain[r]<0){afSt.rain[r]=1.05;break;} }
+  for(var r2=0;r2<afSt.rain.length;r2++) if(afSt.rain[r2]>=0){afSt.rain[r2]-=dt/1.1; if(afSt.rain[r2]<-0.1)afSt.rain[r2]=-1;}
   var dom=0,dmax=0; for(var b3=0;b3<nb;b3++){ if((bands[b3]||0)>dmax){dmax=bands[b3];dom=b3;} }
   var chase=afSt.chase%1;
-  for(var i=0;i<afPts.length;i++){
-    var p=afPts[i], nx=p[0], ny=p[1], dist=p[2], br=0, hue=0, sat=1, bi, dd, tw, wv;
-    if(useLive){                                  // real colours sampled from the output
-      var fc=frame[i]; if(!fc) continue;
-      var lum=Math.min(1,(fc[0]+fc[1]+fc[2])/600);
-      if(lum<=0.015) continue;
-      ctx.globalAlpha=0.2+0.8*lum; ctx.fillStyle='rgb('+fc[0]+','+fc[1]+','+fc[2]+')';
-      ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*lum, 0, 6.283); ctx.fill();
-      continue;
-    }
-    if(gfilter && !((p[3]||0)&gbit)) continue;   // only the selected group lights up
+  function fxColor(i,nx,ny,dist){
+    var br=0,hue=0,sat=1,bi,dd,tw,wv;
     switch(mode){
       case 'bloom': if(afSt.ring) br=Math.exp(-Math.pow((dist-afSt.ringPh)/0.16,2)); br*=(0.45+0.55*lvl); hue=210-170*bass; break;
       case 'spectrum': bi=Math.min(nb-1,Math.floor(nx*nb)); br=bands[bi]||0; hue=280*nx; break;
@@ -269,11 +260,34 @@ function afPrevLoop(){
       case 'scan': var sc=0.5+0.5*Math.sin(afSt.scan*6.2832), sd=Math.abs(ny-sc); br=Math.exp(-Math.pow(sd/0.07,2))*(0.4+0.6*lvl); hue=30*sc; break;
       default: var c1=Math.sin(i*12.9898)*43758.5453; c1-=Math.floor(c1); br=(c1<0.15+0.35*beat)?beat:0; var c2=Math.sin(i*78.233)*43758.5453; c2-=Math.floor(c2); hue=360*c2; break;
     }
-    if(br<0)br=0; if(br>1)br=1;
-    ctx.globalAlpha=0.14+0.86*br; ctx.fillStyle=afHsv(hue,sat,Math.max(0.05,br));
-    ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*br, 0, 6.283); ctx.fill();
+    if(br<0)br=0; if(br>1)br=1; return {br:br, col:afHsv(hue,sat,Math.max(0.05,br))};
   }
-  ctx.globalAlpha=1;
+  function renderOne(cv, useLive){
+    if(!cv) return;
+    var dpr=Math.min(2,window.devicePixelRatio||1), W=cv.clientWidth, H=cv.clientHeight; if(!W) return;
+    if(cv.width!==Math.round(W*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+    var ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+    var pad=8, sw=W-2*pad, sh=H-2*pad, i, p, nx, ny;
+    ctx.fillStyle='rgba(150,162,178,0.26)';
+    for(i=0;i<afPts.length;i++){ ctx.beginPath(); ctx.arc(pad+afPts[i][0]*sw, pad+(1-afPts[i][1])*sh, 1.1, 0, 6.283); ctx.fill(); }
+    for(i=0;i<afPts.length;i++){
+      p=afPts[i]; nx=p[0]; ny=p[1];
+      if(useLive){
+        var fc=frame&&frame[i]; if(!fc) continue;
+        var lum=Math.min(1,(fc[0]+fc[1]+fc[2])/600); if(lum<=0.015) continue;
+        ctx.globalAlpha=0.2+0.8*lum; ctx.fillStyle='rgb('+fc[0]+','+fc[1]+','+fc[2]+')';
+        ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*lum, 0, 6.283); ctx.fill();
+      } else {
+        if(gfilter && !((p[3]||0)&gbit)) continue;
+        var c=fxColor(i,nx,ny,p[2]);
+        ctx.globalAlpha=0.14+0.86*c.br; ctx.fillStyle=c.col;
+        ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*c.br, 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.globalAlpha=1;
+  }
+  renderOne(afCanvasLive, true);   // actual output playing now
+  renderOne(afCanvasFx, false);    // audio-reactive effect
 }
 fetch(afApi('uploadlayout.php')+'&points=1').then(function(r){return r.json();}).then(function(d){
   if(d&&d.count>0&&d.pts){ afPts=d.pts; afGroups=d.groups||[];
@@ -282,17 +296,17 @@ fetch(afApi('uploadlayout.php')+'&points=1').then(function(r){return r.json();})
       ['(all)'].concat(afGroups).forEach(function(g){ var o=document.createElement('option'); o.value=g; o.textContent=g; if(g===cur)o.selected=true; gsel.appendChild(o); }); }
     var prevwrap=document.getElementById('af-prevwrap'), mon=document.getElementById('af-monitor');
     prevwrap.style.display='block';
-    var ar=(d.ar&&d.ar>0)?d.ar:0.6;            // real width/height
-    var vertical=ar<1, Wd, H;                  // tall layout -> beside meters; wide -> below
+    var ar=(d.ar&&d.ar>0)?d.ar:0.6;            // real width/height; two canvases side by side
+    var vertical=ar<1, Wd, H;
     if(vertical){
       mon.style.flexDirection='row'; prevwrap.style.flex='0 0 auto';
-      H=340; Wd=H*ar;
-      var cap=(mon.clientWidth||560)-250; if(cap>80 && Wd>cap){ Wd=cap; H=Wd/ar; }
+      H=300; Wd=H*ar;
+      var cap=Math.floor(((mon.clientWidth||560)-250)/2)-8; if(cap>50 && Wd>cap){ Wd=cap; H=Wd/ar; }
     } else {
       mon.style.flexDirection='column'; prevwrap.style.flex='1 1 100%';
-      Wd=(mon.clientWidth||540); H=Wd/ar; if(H>320){ H=320; Wd=H*ar; }
+      Wd=Math.floor((mon.clientWidth||540)/2)-10; H=Wd/ar; if(H>300){ H=300; Wd=H*ar; }
     }
-    afCanvas.style.width=Math.round(Wd)+'px'; afCanvas.style.height=Math.round(H)+'px';
+    [afCanvasLive,afCanvasFx].forEach(function(cv){ if(cv){ cv.style.width=Math.round(Wd)+'px'; cv.style.height=Math.round(H)+'px'; } });
     afPrevLoop();
   }
 }).catch(function(){});
