@@ -146,7 +146,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       </div>
       <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">22 styles, driven by physical LED position</span></div>
       <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
-      <div class="lab">Auto design change</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_autocycle',this.value,0,0);"><?php foreach (array('off','time','beats') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">rotate modes automatically</span></div>
+      <div class="lab">Auto design change</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_autocycle',this.value,0,0);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music</span></div>
       <div class="lab">Change every</div><div><?php echo afNum('spatial_cyclesecs', '20', '3', '300', '1', 's'); ?></div>
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
       <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
@@ -210,7 +210,7 @@ function afPrevLoop(){
   var ctx=afCanvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   var s=window.afLast||{level:0,beat:0,bass:0,treble:0,bands:[]};
   var mode=s.spatialMode||((document.getElementById('af-spatialmode')||{}).value)||'bloom';
-  document.getElementById('af-prevmode').textContent=mode;
+  document.getElementById('af-prevmode').textContent=mode+(s.musicType?(' · music: '+s.musicType):'');
   var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
   var pad=8, sw=W-2*pad, sh=H-2*pad;
   ctx.fillStyle='rgba(150,162,178,0.26)';                 // base layer: the whole layout shape, always visible

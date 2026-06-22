@@ -102,6 +102,19 @@ const char* spatialModeName(int idx) {
 // Curated order the auto-cycle walks through (1-based mode indices).
 const int kCycleList[] = {1, 5, 15, 7, 17, 9, 16, 10, 20, 2, 18, 19, 8, 11, 21, 4, 13, 22};
 const int kCycleLen = 18;
+
+// "Smart" auto-DJ: the live music is classified into one of these categories,
+// each with a pool of the designs that suit it best (1-based mode indices).
+const char* const kMusicTypes[] = {"dance", "ambient", "bass", "bright", "groove"};
+const int kNumMusicTypes = 5;
+const int kSmartPools[5][6] = {
+    {1, 10, 12, 6, 16, 5},    // dance/EDM   : bloom, fireworks, strobe, spike, bars, pulse
+    {9, 20, 13, 17, 15, 14},  // ambient     : wave, plasma, colorwash, ripple, spin, grow
+    {5, 1, 16, 14, 19, 3},    // bass-heavy  : pulse, bloom, bars, grow, comet, vu
+    {8, 22, 2, 21, 7, 17},    // bright/pop  : sparkle, confetti, spectrum, scan, chase, ripple
+    {7, 2, 3, 19, 4, 16},     // groove      : chase, spectrum, vu, comet, radial, bars
+};
+const int kSmartPoolLen = 6;
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -237,8 +250,52 @@ private:
             hsv2rgb(h + shift, s, v, d[i], d[i + 1], d[i + 2]);
         }
     }
-    // Phase 4: drive each prop by its physical position in the display. 14 modes
-    // (live takes on xLights VU-Meter styles + extras), optionally auto-cycled.
+    // Track a slow profile of the music (~8s) for the smart auto-DJ, and flag
+    // song changes (a silence gap then resume).
+    void updateProfile(float dt) {
+        float a = 1.f - std::exp(-dt / 8.0f);
+        float lv = mAnalyzer.level();
+        mAvgLevel += (lv - mAvgLevel) * a;
+        mAvgBass += (mAnalyzer.bass() - mAvgBass) * a;
+        mAvgMid += (mAnalyzer.mid() - mAvgMid) * a;
+        mAvgTreble += (mAnalyzer.treble() - mAvgTreble) * a;
+        mAvgBeat += (mAnalyzer.beat() - mAvgBeat) * a;
+        if (lv < 0.03f) {
+            mSilenceT += dt;
+        } else {
+            if (mSilenceT > 1.5f) mSongChanged = true;  // resumed after a gap = new song
+            mSilenceT = 0.f;
+        }
+        mDetectedCat = classifyCategory();
+    }
+    int classifyCategory() const {
+        float tot = mAvgBass + mAvgMid + mAvgTreble + 1e-4f;
+        float bassR = mAvgBass / tot, trebR = mAvgTreble / tot;
+        float bpm = mAnalyzer.bpm();
+        if (mAvgLevel > 0.5f && mAvgBeat > 0.32f && bpm > 118.f) return 0;  // dance
+        if (mAvgLevel < 0.33f && mAvgBeat < 0.25f) return 1;                // ambient
+        if (bassR > 0.45f) return 2;                                       // bass
+        if (trebR > 0.40f) return 3;                                       // bright
+        return 4;                                                          // groove
+    }
+    // Pick a design from the detected category's pool; switch on a category
+    // change, a new song, or every ~16 s for variety. Returns 1-based mode.
+    int smartSelect(float dt) {
+        bool repick = false;
+        if (mDetectedCat != mSmartCategory) { mSmartCategory = mDetectedCat; repick = true; }
+        if (mSongChanged) { mSongChanged = false; mSmartPoolIdx++; repick = true; }
+        mSmartTimer += dt;
+        if (mSmartTimer >= 16.f) { mSmartPoolIdx++; repick = true; }
+        if (repick || mSmartMode == 0) {
+            mSmartTimer = 0.f;
+            mSmartMode = kSmartPools[mSmartCategory][mSmartPoolIdx % kSmartPoolLen];
+        }
+        return mSmartMode;
+    }
+
+    // Phase 4: drive each prop by its physical position in the display. 22 modes
+    // (live takes on xLights VU-Meter styles + extras), optionally auto-cycled
+    // or smart-selected from the live music profile.
     void applySpatial(uint8_t* d, float dt) {
         const long cap = (long)FPPD_MAX_CHANNELS;
         const int nb = mAnalyzer.numBands();
@@ -252,7 +309,9 @@ private:
         if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; beatTrig = true; }
         if (beat < 0.2f) mBeatLatch = false;
 
-        // auto design change: walk the curated list on a timer or every 16 beats
+        updateProfile(dt);  // keep the live music profile current
+
+        // auto design change: timer / every 16 beats / smart (music-aware)
         int mode = mSpatialMode;
         if (mAutoCycle == 1) {
             mCycleTimer += dt;
@@ -261,6 +320,8 @@ private:
         } else if (mAutoCycle == 2) {
             if (beatTrig && ++mCycleBeats >= 16) { mCycleBeats = 0; mCycleIdx++; }
             mode = kCycleList[mCycleIdx % kCycleLen];
+        } else if (mAutoCycle == 3) {
+            mode = smartSelect(dt);
         }
         mEffectiveMode = mode;
 
@@ -462,10 +523,11 @@ private:
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
             "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,"
-            "\"spatialMode\":\"%s\",\"bands\":[",
+            "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
-            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(), spatialModeName(mEffectiveMode));
+            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(), spatialModeName(mEffectiveMode),
+            (mDetectedCat >= 0 && mDetectedCat < kNumMusicTypes) ? kMusicTypes[mDetectedCat] : "");
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
             fprintf(f, "%s%.3f", b ? "," : "", mAnalyzer.band(b));
         fprintf(f, "]}");
@@ -512,7 +574,7 @@ private:
         mSpatialMode = spatialModeIndex(cfg("spatial_mode"));
         mSpatialIntensity = std::min(200L, std::max(0L, toLong(cfg("spatial_intensity"), 100)));
         std::string ac = cfg("spatial_autocycle");
-        mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : 0;
+        mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : (ac == "smart") ? 3 : 0;
         mCycleSecs = std::max(3L, toLong(cfg("spatial_cyclesecs"), 20));
         mAutoLevel = toLong(cfg("auto_level"), 1) != 0;
         mSpatialGroup = cfg("spatial_group");
@@ -561,6 +623,11 @@ private:
     float mRingPhase = 0.f, mChasePhase = 0.f, mWavePhase = 0.f;
     float mSpinPhase = 0.f, mRipplePhase = 0.f, mCometPhase = 0.f, mScanPhase = 0.f;
     float mRainFront[3] = {-1.f, -1.f, -1.f};
+    // smart auto-DJ: live music profile + selection state
+    float mAvgLevel = 0.4f, mAvgBass = 0.3f, mAvgMid = 0.3f, mAvgTreble = 0.3f, mAvgBeat = 0.3f;
+    float mSilenceT = 0.f, mSmartTimer = 0.f;
+    bool mSongChanged = false;
+    int mDetectedCat = 4, mSmartCategory = -1, mSmartPoolIdx = 0, mSmartMode = 0;
     struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
     Burst mBursts[5];
 };
