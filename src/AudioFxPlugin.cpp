@@ -90,9 +90,11 @@ const char* const kSpatialModes[] = {
     "bloom", "spectrum", "vu", "radial", "pulse", "spike", "chase",
     "sparkle", "wave", "fireworks", "rain", "strobe", "colorwash", "grow",
     "spin", "bars", "ripple", "fire", "comet", "plasma", "scan", "confetti",
-    "gravimeter", "gravcenter", "waterfall", "djlight", "puddles"};
-const int kNumSpatialModes = 27;
-const int kWfT = 64;  // waterfall (spectrogram) history depth
+    "gravimeter", "gravcenter", "waterfall", "djlight", "puddles",
+    "fire2012", "aurora", "noise", "twinkle"};
+const int kNumSpatialModes = 31;
+const int kWfT = 64;    // waterfall (spectrogram) history depth
+const int kHeatN = 32;  // fire2012 heat cells along height
 int spatialModeIndex(const std::string& s) {
     for (int i = 0; i < kNumSpatialModes; ++i)
         if (s == kSpatialModes[i]) return i + 1;
@@ -102,17 +104,17 @@ const char* spatialModeName(int idx) {
     return (idx >= 1 && idx <= kNumSpatialModes) ? kSpatialModes[idx - 1] : "bloom";
 }
 // Curated order the auto-cycle walks through (1-based mode indices).
-const int kCycleList[] = {1, 5, 15, 23, 7, 17, 9, 26, 16, 10, 25, 20, 2, 18, 27, 19, 8, 24, 11, 21, 4, 13, 22};
-const int kCycleLen = 23;
+const int kCycleList[] = {1, 5, 15, 23, 7, 29, 17, 9, 26, 16, 10, 28, 25, 20, 30, 2, 18, 27, 19, 24, 11, 31, 21, 4, 13, 22};
+const int kCycleLen = 26;
 
 // "Smart" auto-DJ: the live music is classified into one of these categories,
 // each with a pool of the designs that suit it best (1-based mode indices).
 const char* const kMusicTypes[] = {"dance", "ambient", "bass", "bright", "groove"};
 const int kNumMusicTypes = 5;
 const int kSmartPools[5][6] = {
-    {1, 10, 26, 6, 23, 5},    // dance/EDM   : bloom, fireworks, djlight, spike, gravimeter, pulse
-    {9, 20, 13, 17, 15, 14},  // ambient     : wave, plasma, colorwash, ripple, spin, grow
-    {5, 1, 23, 24, 19, 3},    // bass-heavy  : pulse, bloom, gravimeter, gravcenter, comet, vu
+    {1, 10, 26, 28, 23, 5},   // dance/EDM   : bloom, fireworks, djlight, fire2012, gravimeter, pulse
+    {29, 20, 30, 17, 31, 9},  // ambient     : aurora, plasma, noise, ripple, twinkle, wave
+    {5, 1, 23, 28, 19, 24},   // bass-heavy  : pulse, bloom, gravimeter, fire2012, comet, gravcenter
     {8, 22, 27, 25, 7, 17},   // bright/pop  : sparkle, confetti, puddles, waterfall, chase, ripple
     {7, 2, 25, 19, 16, 26},   // groove      : chase, spectrum, waterfall, comet, bars, djlight
 };
@@ -421,10 +423,21 @@ private:
         case 26: { float dd = p.dist; float e;  // djlight - bass/mid/treble rings out from centre
             if (dd < 0.34f) { e = bass; hue = 0.0; } else if (dd < 0.67f) { e = mAnalyzer.mid(); hue = 120.0; } else { e = treble; hue = 240.0; }
             br = 0.12f + 0.88f * e; } break;
-        default: { for (const auto& pu : mPuddles) if (pu.on) {  // puddles - pools pop on beats and soak out
+        case 27: { for (const auto& pu : mPuddles) if (pu.on) {  // puddles - pools pop on beats and soak out
             float rd = std::hypot(p.nx - pu.x, p.ny - pu.y), radius = pu.age * 0.3f;
             if (radius > 0.f && rd < radius) br += (1.f - rd / radius) * (1.f - pu.age / 1.4f); }
             br = std::min(1.f, br); hue = 360.0 * p.nx; } break;
+        case 28: { int hi = (int)(p.ny * (kHeatN - 1)); if (hi < 0) hi = 0; if (hi >= kHeatN) hi = kHeatN - 1;  // fire2012
+            float h = mHeat[hi]; br = h; hue = 360.0 * h; } break;
+        case 29: { float v = 0.5f + 0.3f * std::sin(p.ny * 4.f + mWavePhase * 0.8f)  // aurora - slow layered waves
+                       + 0.2f * std::sin(p.nx * 3.f - mWavePhase * 0.5f) + 0.2f * std::sin((p.nx + p.ny) * 2.f + mWavePhase * 0.3f);
+            if (v < 0) v = 0; if (v > 1) v = 1; br = (0.2f + 0.6f * v) * (0.55f + 0.45f * level); hue = 360.0 * v; } break;
+        case 30: { float v = std::sin(p.nx * 8.f + mWavePhase * 2.f) * std::cos(p.ny * 7.f - mWavePhase * 1.5f)  // noise field
+                       + std::sin((p.nx * p.ny) * 12.f + mWavePhase); v = (v + 2.f) * 0.25f;
+            br = (0.25f + 0.75f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
+        default: { float tw = std::sin(mWavePhase * 1.8f + p.ch * 2.399f);  // twinkle (colortwinkles)
+            float on = tw > 0.5f ? (tw - 0.5f) * 2.f : 0.f; br = on * (0.5f + 0.5f * level);
+            float h = std::fmod(std::sin(p.ch * 0.0173f) * 43758.5453f, 1.f); if (h < 0) h += 1.f; hue = 360.0 * h; } break;
         }
         br *= mSpatialIntensity / 100.f;
         if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
@@ -505,6 +518,17 @@ private:
             for (auto& pu : mPuddles) if (!pu.on) { pu.on = true; pu.age = 0.f; pu.x = q.nx; pu.y = q.ny; break; }
         }
         for (auto& pu : mPuddles) if (pu.on) { pu.age += dt; if (pu.age > 1.4f) pu.on = false; }
+        // fire2012 heat model (throttled for consistent flames): cool, rise, spark on bass
+        mFireAccum += dt;
+        if (mFireAccum >= 0.03f) { mFireAccum -= 0.03f;
+            for (int i = 0; i < kHeatN; ++i) { float cl = (std::rand() % 100) / 100.f * (0.5f / kHeatN + 0.015f); mHeat[i] -= cl; if (mHeat[i] < 0.f) mHeat[i] = 0.f; }
+            for (int i = kHeatN - 1; i >= 2; --i) mHeat[i] = (mHeat[i - 1] + mHeat[i - 2] + mHeat[i - 2]) / 3.f;
+            if ((std::rand() % 100) / 100.f < 0.5f + 0.5f * bass) {
+                int y = std::rand() % (kHeatN / 4 + 1);
+                mHeat[y] += 0.5f + 0.5f * ((std::rand() % 100) / 100.f) * (0.5f + 0.5f * bass);
+                if (mHeat[y] > 1.f) mHeat[y] = 1.f;
+            }
+        }
         int dom = 0; float dmax = 0.f;  // dominant band (for colorwash)
         for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
 
@@ -799,6 +823,7 @@ private:
     int mWfHead = 0;
     struct Puddle { float x = 0, y = 0, age = 0; bool on = false; };
     Puddle mPuddles[4];
+    float mHeat[kHeatN] = {}, mFireAccum = 0.f;  // fire2012 heat model (phase 3)
     // smart auto-DJ: live music profile + selection state
     float mAvgLevel = 0.4f, mAvgBass = 0.3f, mAvgMid = 0.3f, mAvgTreble = 0.3f, mAvgBeat = 0.3f;
     float mSilenceT = 0.f, mSmartTimer = 0.f;
