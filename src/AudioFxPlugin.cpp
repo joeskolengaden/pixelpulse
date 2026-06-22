@@ -11,7 +11,7 @@
  *
  * Like pixelfx: a ChannelData modifier, never touches test patterns, optional
  * "only while a sequence is playing", settings re-read ~2x/sec so app/UI changes
- * apply live. Writes /tmp/pixelpulse_status.json for the settings-page meters.
+ * apply live. Writes /dev/shm/pixelpulse_status.json for the settings-page meters.
  */
 #include <algorithm>
 #include <atomic>
@@ -225,7 +225,10 @@ private:
         auto now = std::chrono::steady_clock::now();
         if (now - mLastStatus < std::chrono::milliseconds(120)) return;
         mLastStatus = now;
-        FILE* f = fopen("/tmp/pixelpulse_status.json", "w");
+        // /dev/shm (RAM, no SD wear) is shared across mount namespaces, so the
+        // web server (Apache runs with systemd PrivateTmp, a private /tmp) can
+        // read what fppd writes. /tmp would be invisible to the settings page.
+        FILE* f = fopen("/dev/shm/pixelpulse_status.json", "w");
         if (!f) return;
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"

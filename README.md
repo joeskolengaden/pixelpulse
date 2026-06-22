@@ -65,8 +65,10 @@ choose, so you can react on one prop and leave the rest alone.
 - **Reaction** (`modifyChannelData`): reads the live features and modulates the
   channel buffer each frame.
 
-A snapshot is written to `/tmp/pixelpulse_status.json` ~8×/sec so the settings
-page can show **live meters** while you set up.
+A snapshot is written to `/dev/shm/pixelpulse_status.json` ~8×/sec so the
+settings page can show **live meters** while you set up. (It's `/dev/shm`, not
+`/tmp`: Apache runs under systemd `PrivateTmp`, so a `/tmp` file written by
+fppd would be invisible to the web UI.)
 
 The DSP is pure (no I/O) and unit-tested: a 60 Hz tone reads `bass = 1.0`, and
 beats every 0.5 s are detected at ~120 BPM.
