@@ -762,19 +762,23 @@ private:
         auto now = std::chrono::steady_clock::now();
         if (now - mLastAmbientCheck < std::chrono::seconds(2)) return;
         mLastAmbientCheck = now;
-        bool ambient = false, enabled = false;
+        bool ambient = false, enabled = false, autocycle = false;
         std::string pl;
         std::ifstream cf("/home/fpp/media/config/plugin.pixelpulse");
         std::string line;
         while (std::getline(cf, line)) {
             if (line.rfind("ambient_mode", 0) == 0) ambient = line.find("\"1\"") != std::string::npos;
             else if (line.rfind("enabled ", 0) == 0) enabled = line.find("\"1\"") != std::string::npos;
+            else if (line.rfind("spatial_autocycle", 0) == 0)
+                autocycle = line.find("\"off\"") == std::string::npos && line.find("\"\"") == std::string::npos;
             else if (line.rfind("ambient_playlist", 0) == 0) {
                 size_t q1 = line.find('"');
                 if (q1 != std::string::npos) { size_t q2 = line.find('"', q1 + 1); if (q2 != std::string::npos) pl = line.substr(q1 + 1, q2 - q1 - 1); }
             }
         }
-        if (!ambient || !enabled) return;
+        // Auto design change implies a running show: if cycling is enabled, run the
+        // output loop too (like ambient) so designs cycle standalone, no show needed.
+        if ((!ambient && !autocycle) || !enabled) return;
         if (ChannelTester::INSTANCE.Testing()) return;
         if (sequence != nullptr && sequence->IsSequenceRunning()) return;  // a show is already playing
         if (now - mLastAmbientStart < std::chrono::seconds(3)) return;

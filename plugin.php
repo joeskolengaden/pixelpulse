@@ -169,7 +169,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">35 styles, driven by physical LED position</span></div>
       <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
       <div class="lab">With playback</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_blend',this.value,0,0);"><?php foreach (array('replace'=>'replace (override)','overlay'=>'overlay (keep brighter)','add'=>'add (brighten)','modulate'=>'modulate (pulse the show)') as $v=>$lbl) echo "<option value='$v'" . (af_get('spatial_blend','replace')===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">override the sequence, or blend with it</span></div>
-      <div class="lab">Auto design change</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_autocycle',this.value,0,0);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music</span></div>
+      <div class="lab">Auto design change</div><div><select onChange="afAutocycle(this);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music · when on, designs cycle on their own (no show needed)</span></div>
       <div class="lab">Change every</div><div><?php echo afNum('spatial_cyclesecs', '20', '3', '300', '1', 's'); ?></div>
       <div class="lab">Colour palette</div><div><select onChange="SetPluginSetting('pixelpulse','palette',this.value,0,0);"><?php foreach (array('auto','rainbow','fire','ocean','forest','sunset','aurora','party','lava','cloud','sherbet') as $m) echo "<option value='$m'" . (af_get('palette','auto')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">themed colours (smart picks to match the music)</span></div>
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
@@ -186,6 +186,12 @@ function afGpioPick(sel){ var o=sel.options[sel.selectedIndex]; if(!o||!o.value)
   SetPluginSetting('pixelpulse','switch_gpio',pp[0],0,0);
   SetPluginSetting('pixelpulse','switch_chip',pp[1],0,0);
   SetPluginSetting('pixelpulse','switch_line',pp[2],0,0); }
+// auto design change: when turned on, the plugin self-runs the output loop so
+// designs cycle with no show — make sure that loop's files exist
+function afAutocycle(sel){
+  SetPluginSetting('pixelpulse','spatial_autocycle',sel.value,0,0);
+  if(sel.value!=='off') fetch(afApi('ambient.php')+'&setup=1').catch(function(){});
+}
 // ambient mode: create the blank sequence/playlist on enable; the plugin keeps it looping when idle
 function afAmbient(cb){
   SetPluginSetting('pixelpulse','ambient_mode',cb.checked?1:0,0,0);
