@@ -48,16 +48,20 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">Live monitor</span><span class="stat"><span class="dot" id="af-dev"></span><span id="af-devtxt">checking…</span></span></div>
     <div class="body">
-      <div class="meter"><span class="ml">Level</span><div class="bar"><div id="af-level" style="background:#2f9e6f"></div></div></div>
-      <div class="meter"><span class="ml">Bass</span><div class="bar"><div id="af-bass" style="background:#e24b4a"></div></div></div>
-      <div class="meter"><span class="ml">Mid</span><div class="bar"><div id="af-mid" style="background:#ef9f27"></div></div></div>
-      <div class="meter"><span class="ml">Treble</span><div class="bar"><div id="af-treble" style="background:#378add"></div></div></div>
-      <div class="meter"><span class="ml">Beat</span><span class="dot" id="af-beat"></span><span style="flex:1"></span><span style="font-size:12.5px;color:#6b7280">BPM <b id="af-bpm">–</b></span></div>
-      <div class="bands" id="af-bands"></div>
-      <div class="help" id="af-hint" style="margin-top:8px"></div>
-      <div id="af-prevwrap" style="display:none;margin-top:12px;text-align:center">
-        <div class="help" style="margin-bottom:5px;text-align:left">Spatial preview — your layout lit by the live audio (mode: <b id="af-prevmode">bloom</b>)</div>
-        <canvas id="af-preview" width="120" height="200" style="background:#0e1116;border-radius:8px;display:inline-block;max-width:100%"></canvas>
+      <div id="af-monitor" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+        <div id="af-meters" style="flex:1 1 250px;min-width:230px">
+          <div class="meter"><span class="ml">Level</span><div class="bar"><div id="af-level" style="background:#2f9e6f"></div></div></div>
+          <div class="meter"><span class="ml">Bass</span><div class="bar"><div id="af-bass" style="background:#e24b4a"></div></div></div>
+          <div class="meter"><span class="ml">Mid</span><div class="bar"><div id="af-mid" style="background:#ef9f27"></div></div></div>
+          <div class="meter"><span class="ml">Treble</span><div class="bar"><div id="af-treble" style="background:#378add"></div></div></div>
+          <div class="meter"><span class="ml">Beat</span><span class="dot" id="af-beat"></span><span style="flex:1"></span><span style="font-size:12.5px;color:#6b7280">BPM <b id="af-bpm">–</b></span></div>
+          <div class="bands" id="af-bands"></div>
+          <div class="help" id="af-hint" style="margin-top:8px"></div>
+        </div>
+        <div id="af-prevwrap" style="display:none;text-align:center">
+          <div class="help" style="margin-bottom:5px;text-align:left">Spatial preview — mode: <b id="af-prevmode">bloom</b></div>
+          <canvas id="af-preview" width="120" height="240" style="background:#0e1116;border-radius:8px;display:inline-block;max-width:100%"></canvas>
+        </div>
       </div>
     </div>
   </div>
@@ -262,10 +266,18 @@ fetch(afApi('uploadlayout.php')+'&points=1').then(function(r){return r.json();})
     var gsel=document.getElementById('af-spatialgroup');
     if(gsel){ var cur=gsel.value; gsel.innerHTML='';
       ['(all)'].concat(afGroups).forEach(function(g){ var o=document.createElement('option'); o.value=g; o.textContent=g; if(g===cur)o.selected=true; gsel.appendChild(o); }); }
-    document.getElementById('af-prevwrap').style.display='block';
-    var ar=(d.ar&&d.ar>0)?d.ar:0.6;                      // real width/height, frame the true shape
-    var maxH=320, maxW=(afCanvas.parentNode.clientWidth||580)-2;
-    var H=maxH, Wd=H*ar; if(Wd>maxW){ Wd=maxW; H=Wd/ar; }
+    var prevwrap=document.getElementById('af-prevwrap'), mon=document.getElementById('af-monitor');
+    prevwrap.style.display='block';
+    var ar=(d.ar&&d.ar>0)?d.ar:0.6;            // real width/height
+    var vertical=ar<1, Wd, H;                  // tall layout -> beside meters; wide -> below
+    if(vertical){
+      mon.style.flexDirection='row'; prevwrap.style.flex='0 0 auto';
+      H=340; Wd=H*ar;
+      var cap=(mon.clientWidth||560)-250; if(cap>80 && Wd>cap){ Wd=cap; H=Wd/ar; }
+    } else {
+      mon.style.flexDirection='column'; prevwrap.style.flex='1 1 100%';
+      Wd=(mon.clientWidth||540); H=Wd/ar; if(H>320){ H=320; Wd=H*ar; }
+    }
     afCanvas.style.width=Math.round(Wd)+'px'; afCanvas.style.height=Math.round(H)+'px';
     afPrevLoop();
   }
