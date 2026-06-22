@@ -77,7 +77,8 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">General</span><?php echo afTog('enabled'); ?></div>
     <div class="body"><div class="grid">
-      <div class="lab">Only while playing</div><div><?php echo afTog('onlyWhenPlaying', '1'); ?></div>
+      <div class="lab">Run when</div><div><select onChange="SetPluginSetting('pixelpulse','run_when',this.value,0,0);"><?php $rw = af_get('run_when', af_get('onlyWhenPlaying','1')==='1'?'playing':'always'); foreach (array('playing'=>'a sequence is playing','idle'=>'no sequence is playing','always'=>'always (whenever FPP outputs)') as $v=>$lbl) echo "<option value='$v'" . ($rw===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">test patterns are never touched</span></div>
+      <div class="lab"></div><div class="help" style="font-size:12px">FPP doesn't run the plugin when fully idle — for audio reactivity with no show, loop a blank sequence.</div>
     </div></div>
   </div>
 

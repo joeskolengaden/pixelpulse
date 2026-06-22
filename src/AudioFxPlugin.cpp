@@ -642,9 +642,11 @@ private:
         return bytes >= 1;
     }
     bool shouldModify() const {
-        if (ChannelTester::INSTANCE.Testing()) return false;
-        if (mOnlyWhenPlaying && (sequence == nullptr || !sequence->IsSequenceRunning())) return false;
-        return true;
+        if (ChannelTester::INSTANCE.Testing()) return false;  // test patterns never touched
+        bool playing = sequence != nullptr && sequence->IsSequenceRunning();
+        if (mRunWhen == 0) return playing;    // only while a sequence plays
+        if (mRunWhen == 1) return !playing;   // only while NOT playing (bridge / effects / between shows)
+        return true;                          // always (whenever FPP outputs)
     }
     void maybeReload() {
         auto now = std::chrono::steady_clock::now();
@@ -789,7 +791,9 @@ private:
 
     void applySettings() {
         mEnabled = toLong(cfg("enabled"), 0) != 0;
-        mOnlyWhenPlaying = toLong(cfg("onlyWhenPlaying"), 1) != 0;
+        std::string rw = cfg("run_when");
+        if (!rw.empty()) mRunWhen = (rw == "idle") ? 1 : (rw == "always") ? 2 : 0;
+        else mRunWhen = (toLong(cfg("onlyWhenPlaying"), 1) != 0) ? 0 : 2;  // back-compat with onlyWhenPlaying
         mSwitchEnabled = toLong(cfg("switch_enabled"), 0) != 0;
         mSwitchGpio = (int)toLong(cfg("switch_gpio"), -1);
         mSwitchChip = (int)toLong(cfg("switch_chip"), -1);
@@ -848,7 +852,8 @@ private:
     AlsaCapture mCapture;
     std::chrono::steady_clock::time_point mLastReload, mLastStatus, mLastFrameWrite;
 
-    bool mEnabled = false, mOnlyWhenPlaying = true;
+    bool mEnabled = false;
+    int mRunWhen = 0;  // 0 only while playing, 1 only while not playing, 2 always
     bool mSwitchEnabled = false, mSwitchActiveHigh = true, mSwitchOn = true;
     int mSwitchGpio = -1, mSwitchChip = -1, mSwitchLine = -1, mSwitchPull = 0;  // pull: 0 none,1 up,2 down
     std::string mDevice = "default";

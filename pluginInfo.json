@@ -14,7 +14,7 @@
 	"settingsFile": "config/plugin.pixelpulse",
 	"settingsSchema": [
 		{ "key": "enabled", "label": "Plugin enabled", "type": "bool", "default": false, "group": "general", "appliesLive": true },
-		{ "key": "onlyWhenPlaying", "label": "Only while a sequence is playing", "type": "bool", "default": true, "group": "general", "appliesLive": true },
+		{ "key": "run_when", "label": "Run when", "type": "enum", "default": "playing", "options": ["playing", "idle", "always"], "group": "general", "appliesLive": true, "help": "playing = only while a sequence/playlist runs; idle = only while NOT playing (e.g. live E1.31/DDP bridge or between shows); always = whenever FPP is outputting. Test patterns are never touched. Note: FPP does not call the plugin when fully idle (no playback/bridge), so for ambient audio reactivity with no show, loop a blank sequence." },
 		{ "key": "switch_enabled", "label": "Physical switch", "type": "bool", "default": false, "group": "switch", "appliesLive": true, "help": "Gate the plugin with a hardware switch wired to a GPIO pin (read ~2x/sec)." },
 		{ "key": "switch_gpio", "label": "GPIO pin", "type": "enum", "default": "-1", "options": ["-1"], "optionsFrom": "api/gpio#pin", "group": "switch", "appliesLive": true, "help": "Switch input pin, chosen from FPP's GPIO pin list (api/gpio). Sets switch_chip/switch_line too." },
 		{ "key": "switch_chip", "type": "int", "default": -1, "group": "switch", "appliesLive": true, "hidden": true },
