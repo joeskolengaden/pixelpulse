@@ -83,6 +83,23 @@ struct LayoutProp {
     float nx, ny, nz, dist;
 };
 const char* const kLayoutPath = "/home/fpp/media/config/pixelpulse_layout.txt";
+
+// Spatial effect vocabulary (live takes on xLights' VU-Meter styles + extras).
+const char* const kSpatialModes[] = {
+    "bloom", "spectrum", "vu", "radial", "pulse", "spike", "chase",
+    "sparkle", "wave", "fireworks", "rain", "strobe", "colorwash", "grow"};
+const int kNumSpatialModes = 14;
+int spatialModeIndex(const std::string& s) {
+    for (int i = 0; i < kNumSpatialModes; ++i)
+        if (s == kSpatialModes[i]) return i + 1;
+    return 1;
+}
+const char* spatialModeName(int idx) {
+    return (idx >= 1 && idx <= kNumSpatialModes) ? kSpatialModes[idx - 1] : "bloom";
+}
+// Curated order the auto-cycle walks through (1-based mode indices).
+const int kCycleList[] = {1, 5, 7, 9, 10, 2, 8, 11, 4, 13, 14, 3};
+const int kCycleLen = 12;
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -218,24 +235,54 @@ private:
             hsv2rgb(h + shift, s, v, d[i], d[i + 1], d[i + 2]);
         }
     }
-    // Phase 4: drive each prop by its physical position in the display.
-    //   1 bloom    - beats radiate a shockwave outward from the centre
-    //   2 spectrum - frequency mapped across X (bass left -> treble right)
-    //   3 vu       - loudness fills the display bottom-to-top by height
-    //   4 radial   - frequency mapped centre-out (bass middle -> treble edge)
+    // Phase 4: drive each prop by its physical position in the display. 14 modes
+    // (live takes on xLights VU-Meter styles + extras), optionally auto-cycled.
     void applySpatial(uint8_t* d, float dt) {
         const long cap = (long)FPPD_MAX_CHANNELS;
         const int nb = mAnalyzer.numBands();
         const float level = mAnalyzer.level();
         const float beat = mAnalyzer.beat();
         const float bass = mAnalyzer.bass();
+        const float treble = mAnalyzer.treble();
         const float gainI = mSpatialIntensity / 100.f;
 
-        if (mSpatialMode == 1) {  // advance the beat shockwave
-            if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; mRingOn = true; mRingPhase = 0.f; }
-            if (beat < 0.2f) mBeatLatch = false;
+        bool beatTrig = false;  // rising edge of a beat
+        if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; beatTrig = true; }
+        if (beat < 0.2f) mBeatLatch = false;
+
+        // auto design change: walk the curated list on a timer or every 16 beats
+        int mode = mSpatialMode;
+        if (mAutoCycle == 1) {
+            mCycleTimer += dt;
+            if (mCycleTimer >= (float)mCycleSecs) { mCycleTimer = 0.f; mCycleIdx++; }
+            mode = kCycleList[mCycleIdx % kCycleLen];
+        } else if (mAutoCycle == 2) {
+            if (beatTrig && ++mCycleBeats >= 16) { mCycleBeats = 0; mCycleIdx++; }
+            mode = kCycleList[mCycleIdx % kCycleLen];
+        }
+        mEffectiveMode = mode;
+
+        // per-frame state advance
+        mChasePhase += dt * (0.12f + 0.5f * level);
+        mWavePhase += dt * 0.6f;
+        if (mode == 1) {
+            if (beatTrig) { mRingOn = true; mRingPhase = 0.f; }
             if (mRingOn) { mRingPhase += dt / 0.6f; if (mRingPhase > 1.5f) mRingOn = false; }
         }
+        if (mode == 10) {  // fireworks: spawn a burst at a random prop on each beat
+            if (beatTrig && !mLayout.empty()) {
+                const LayoutProp& q = mLayout[std::rand() % (int)mLayout.size()];
+                for (auto& b : mBursts) if (!b.on) { b.on = true; b.age = 0.f; b.x = q.nx; b.y = q.ny; break; }
+            }
+            for (auto& b : mBursts) if (b.on) { b.age += dt; if (b.age > 1.2f) b.on = false; }
+        }
+        if (mode == 11) {  // rain: drop a band from the top on each beat
+            if (beatTrig) for (auto& rf : mRainFront) if (rf < 0.f) { rf = 1.05f; break; }
+            for (auto& rf : mRainFront) if (rf >= 0.f) { rf -= dt / 1.1f; if (rf < -0.1f) rf = -1.f; }
+        }
+        int dom = 0; float dmax = 0.f;  // dominant band (for colorwash)
+        for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
+        const float chase = std::fmod(mChasePhase, 1.f);
 
         for (const LayoutProp& p : mLayout) {
             long s = p.start - 1;
@@ -244,30 +291,45 @@ private:
             if (s + c > cap) c = cap - s;
             if (c < 3) continue;
 
-            float bright = 0.f;
-            double hue = 0.0;
-            if (mSpatialMode == 1) {
-                if (mRingOn) bright = std::exp(-std::pow((p.dist - mRingPhase) / 0.16f, 2.f));
-                bright *= (0.45f + 0.55f * level);
-                hue = 210.0 - 170.0 * bass;            // bass shifts blue -> red
-            } else if (mSpatialMode == 2) {
-                int bi = (int)(p.nx * nb); if (bi >= nb) bi = nb - 1; if (bi < 0) bi = 0;
-                bright = mAnalyzer.band(bi);
-                hue = 280.0 * p.nx;
-            } else if (mSpatialMode == 3) {
-                bright = (p.ny <= level) ? (0.4f + 0.6f * (1.f - (level - p.ny))) : 0.f;
-                hue = 120.0 * (1.0 - p.ny);            // green low -> red high
-            } else {
-                int bi = (int)(p.dist * nb); if (bi >= nb) bi = nb - 1; if (bi < 0) bi = 0;
-                bright = mAnalyzer.band(bi);
-                hue = 200.0 + 100.0 * p.dist;
+            float br = 0.f; double hue = 0.0, sat = 1.0;
+            switch (mode) {
+            case 1:  // bloom - beat shockwave from centre
+                if (mRingOn) br = std::exp(-std::pow((p.dist - mRingPhase) / 0.16f, 2.f));
+                br *= (0.45f + 0.55f * level); hue = 210.0 - 170.0 * bass; break;
+            case 2: { int bi = (int)(p.nx * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
+                br = mAnalyzer.band(bi); hue = 280.0 * p.nx; } break;  // spectrum across X
+            case 3:  // vu - loudness by height
+                br = (p.ny <= level) ? (0.4f + 0.6f * (1.f - (level - p.ny))) : 0.f; hue = 120.0 * (1.0 - p.ny); break;
+            case 4: { int bi = (int)(p.dist * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
+                br = mAnalyzer.band(bi); hue = 200.0 + 100.0 * p.dist; } break;  // radial spectrum
+            case 5:  // pulse - whole display breathes with level
+                br = 0.1f + 0.9f * level; hue = 210.0 - 170.0 * bass + 90.0 * treble; break;
+            case 6:  // spike - sharp full flash on beats (decaying)
+                br = beat; hue = 40.0 + 200.0 * bass; break;
+            case 7: { float dd = std::fabs(p.nx - chase); dd = std::min(dd, 1.f - dd);  // chase sweep
+                br = std::exp(-std::pow(dd / 0.10f, 2.f)) * (0.4f + 0.6f * level); hue = 200.0 + 120.0 * p.nx; } break;
+            case 8: { float tw = std::sin(mWavePhase * 6.0f + p.nx * 53.0f + p.ny * 97.0f);  // sparkle
+                br = (tw > (1.f - 0.5f * level - (beatTrig ? 0.4f : 0.f))) ? 1.f : 0.f; hue = 180.0 + 120.0 * p.ny; } break;
+            case 9: { float w = 0.5f + 0.5f * std::sin((p.nx + p.ny) * 9.42f - mWavePhase * 6.2832f);  // intensity wave
+                br = w * (0.25f + 0.75f * level); hue = 260.0 * w; } break;
+            case 10: { for (const auto& b : mBursts) if (b.on) {  // fireworks
+                float rd = std::hypot(p.nx - b.x, p.ny - b.y);
+                br += std::exp(-std::pow((rd - b.age * 0.9f) / 0.08f, 2.f)) * (1.f - b.age / 1.2f); }
+                br = std::min(1.f, br) * (0.5f + 0.5f * level); hue = 30.0 + 300.0 * bass; } break;
+            case 11: { for (float rf : mRainFront) if (rf >= 0.f) br += std::exp(-std::pow((p.ny - rf) / 0.10f, 2.f));  // rain
+                br = std::min(1.f, br); hue = 200.0; } break;
+            case 12:  // strobe - full white flash on beat
+                br = (beat > 0.5f) ? 1.f : 0.f; sat = 0.0; break;
+            case 13:  // colorwash - whole display follows the dominant frequency
+                br = 0.15f + 0.85f * level; hue = 280.0 * dom / std::max(1, nb - 1); break;
+            default:  // grow - lit region expands from centre with level (Level Shape)
+                br = (p.dist <= level * 1.15f) ? (0.5f + 0.5f * level) : 0.f; hue = 140.0 - 120.0 * p.dist; break;
             }
-            bright *= gainI;
-            if (bright < 0.f) bright = 0.f;
-            if (bright > 1.f) bright = 1.f;
+            br *= gainI;
+            if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
 
             uint8_t R, G, B;
-            hsv2rgb(hue, 1.0, bright, R, G, B);
+            hsv2rgb(hue, sat, br, R, G, B);
             for (long i = 0; i + 2 < c; i += p.step) { d[s + i] = R; d[s + i + 1] = G; d[s + i + 2] = B; }
         }
     }
@@ -329,6 +391,7 @@ private:
         mAnalyzer.setSmoothing(mSmoothing);
         mAnalyzer.setAgc(mAgcEnabled, mAgcSpeed);
         mAnalyzer.setTrims(mBassTrim, mMidTrim, mTrebleTrim);
+        mAnalyzer.setAutoLevel(mAutoLevel);
     }
     void restartCapture() {
         mAnalyzer.configure(mSampleRate, 1024, 8);
@@ -347,10 +410,11 @@ private:
         if (!f) return;
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
-            "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,\"bands\":[",
+            "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,"
+            "\"spatialMode\":\"%s\",\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
-            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel());
+            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(), spatialModeName(mEffectiveMode));
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
             fprintf(f, "%s%.3f", b ? "," : "", mAnalyzer.band(b));
         fprintf(f, "]}");
@@ -394,9 +458,12 @@ private:
         mSpeedAmount = std::min(300L, std::max(0L, toLong(cfg("speed_amount"), 50)));
 
         mSpatialEnabled = toLong(cfg("spatial_enabled"), 0) != 0;
-        std::string spm = cfg("spatial_mode");
-        mSpatialMode = (spm == "spectrum") ? 2 : (spm == "vu") ? 3 : (spm == "radial") ? 4 : 1;
+        mSpatialMode = spatialModeIndex(cfg("spatial_mode"));
         mSpatialIntensity = std::min(200L, std::max(0L, toLong(cfg("spatial_intensity"), 100)));
+        std::string ac = cfg("spatial_autocycle");
+        mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : 0;
+        mCycleSecs = std::max(3L, toLong(cfg("spatial_cyclesecs"), 20));
+        mAutoLevel = toLong(cfg("auto_level"), 1) != 0;
     }
 
     AudioAnalyzer mAnalyzer;
@@ -427,11 +494,20 @@ private:
     std::vector<LayoutProp> mLayout;
     time_t mLayoutMtime = 0;
     bool mSpatialEnabled = false;
-    int mSpatialMode = 1;      // 1 bloom, 2 spectrum, 3 vu, 4 radial
+    int mSpatialMode = 1;          // 1..14 (see kSpatialModes)
+    int mEffectiveMode = 1;        // the mode actually rendering (auto-cycle may override)
     long mSpatialIntensity = 100;
+    int mAutoCycle = 0;            // 0 off, 1 time, 2 beats
+    long mCycleSecs = 20;
+    int mCycleIdx = 0, mCycleBeats = 0;
+    float mCycleTimer = 0.f;
+    bool mAutoLevel = true;
     std::chrono::steady_clock::time_point mLastFrame;
     bool mBeatLatch = false, mRingOn = false;
-    float mRingPhase = 0.f;
+    float mRingPhase = 0.f, mChasePhase = 0.f, mWavePhase = 0.f;
+    float mRainFront[3] = {-1.f, -1.f, -1.f};
+    struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
+    Burst mBursts[5];
 };
 
 extern "C" {

@@ -34,6 +34,7 @@ public:
     void setSmoothing(float s) { mSmoothing = s < 0.f ? 0.f : (s > 0.97f ? 0.97f : s); }  // release smoothing 0..0.97
     void setAgc(bool on, float speed) { mAgcEnabled = on; mAgcSpeed = speed < 0.f ? 0.f : (speed > 1.f ? 1.f : speed); }
     void setTrims(float b, float m, float t) { mBassTrim = b; mMidTrim = m; mTrebleTrim = t; }
+    void setAutoLevel(bool on) { mAutoLevel = on; }   // slow per-song input leveling
 
     // Feed mono samples (any count); processes whole FFT windows as they fill.
     void pushSamples(const float* mono, int n);
@@ -66,6 +67,8 @@ private:
     float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;
     float mSmoothing = 0.0f, mAgcSpeed = 0.5f;
     bool mAgcEnabled = true;
+    bool mAutoLevel = true;
+    float mAutoGainFactor = 1.0f, mAvgRaw = 0.02f;  // slow per-song leveling state
     float mBassTrim = 1.0f, mMidTrim = 1.0f, mTrebleTrim = 1.0f;
     float mLvlS = 0.f, mBassS = 0.f, mMidS = 0.f, mTrebS = 0.f, mBandS[MAX_BANDS] = {0};  // smoothing state
 

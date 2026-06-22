@@ -85,6 +85,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
     <div class="head"><span class="t">Audio tuning</span></div>
     <div class="body"><div class="grid">
       <div class="lab">Input channel</div><div><select onChange="SetPluginSetting('pixelpulse','input_channel',this.value,0,0);"><?php foreach (array('mix','left','right') as $m) echo "<option value='$m'" . (af_get('input_channel','mix')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">use one side if the mic is wired to L or R</span></div>
+      <div class="lab">Auto level (per song) <?php echo afTog('auto_level', '1'); ?></div><div class="help">Slowly auto-adjusts gain so quiet &amp; loud songs drive the lights equally.</div>
       <div class="lab">Auto-gain (AGC) <?php echo afTog('agc_enabled', '1'); ?></div><div class="help">Normalize loudness to the room. Off = absolute (set with Input gain).</div>
       <div class="lab">AGC speed</div><div><?php echo afNum('agc_speed', '0.5', '0', '1', '0.05'); ?></div>
       <div class="lab">Smoothing</div><div><?php echo afNum('smoothing', '0', '0', '0.95', '0.05'); ?> <span class="help">eases the fall so reactions breathe</span></div>
@@ -139,7 +140,9 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">drives effects by physical prop position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">14 styles, driven by physical prop position</span></div>
+      <div class="lab">Auto design change</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_autocycle',this.value,0,0);"><?php foreach (array('off','time','beats') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">rotate modes automatically</span></div>
+      <div class="lab">Change every</div><div><?php echo afNum('spatial_cyclesecs', '20', '3', '300', '1', 's'); ?></div>
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
       <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
     </div></div>
@@ -191,28 +194,47 @@ var afPts=null, afCanvas=document.getElementById('af-preview');
 function afHsv(h,s,v){ h=((h%360)+360)%360; var c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,r=0,g=0,b=0;
   if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}
   return 'rgb('+Math.round((r+m)*255)+','+Math.round((g+m)*255)+','+Math.round((b+m)*255)+')'; }
-var afRing={on:false,ph:0,latch:false,t:performance.now()};
+var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,rain:[-1,-1,-1],bursts:[]};
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
   if(!afPts||!afCanvas) return;
-  var now=performance.now(), dt=Math.min(0.2,(now-afRing.t)/1000); afRing.t=now;
+  var now=performance.now(), dt=Math.min(0.2,(now-afSt.t)/1000); afSt.t=now;
   var dpr=Math.min(2,window.devicePixelRatio||1), W=afCanvas.clientWidth, H=afCanvas.clientHeight;
   if(!W) return;
   if(afCanvas.width!==Math.round(W*dpr)){ afCanvas.width=Math.round(W*dpr); afCanvas.height=Math.round(H*dpr); }
   var ctx=afCanvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
-  var s=window.afLast||{level:0,beat:0,bass:0,bands:[]};
-  var modeEl=document.getElementById('af-spatialmode'), mode=modeEl?modeEl.value:'bloom';
+  var s=window.afLast||{level:0,beat:0,bass:0,treble:0,bands:[]};
+  var mode=s.spatialMode||((document.getElementById('af-spatialmode')||{}).value)||'bloom';
   document.getElementById('af-prevmode').textContent=mode;
-  var bands=s.bands||[], nb=bands.length||8, pad=8, sw=W-2*pad, sh=H-2*pad;
-  if(mode==='bloom'){ if(s.beat>0.5&&!afRing.latch){afRing.latch=true;afRing.on=true;afRing.ph=0;} if(s.beat<0.2)afRing.latch=false; if(afRing.on){afRing.ph+=dt/0.6; if(afRing.ph>1.5)afRing.on=false;} }
+  var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
+  var pad=8, sw=W-2*pad, sh=H-2*pad;
+  var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;} if(beat<0.2)afSt.latch=false;
+  afSt.chase+=dt*(0.12+0.5*lvl); afSt.wave+=dt*0.6;
+  if(mode==='bloom'){ if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;} }
+  if(mode==='fireworks'){ if(trig&&afSt.bursts.length<5){ var q=afPts[Math.floor(Math.random()*afPts.length)]; afSt.bursts.push({x:q[0],y:q[1],age:0}); } afSt.bursts.forEach(function(b){b.age+=dt;}); afSt.bursts=afSt.bursts.filter(function(b){return b.age<=1.2;}); }
+  if(mode==='rain'){ if(trig){ for(var r=0;r<afSt.rain.length;r++) if(afSt.rain[r]<0){afSt.rain[r]=1.05;break;} } for(var r2=0;r2<afSt.rain.length;r2++) if(afSt.rain[r2]>=0){afSt.rain[r2]-=dt/1.1; if(afSt.rain[r2]<-0.1)afSt.rain[r2]=-1;} }
+  var dom=0,dmax=0; for(var b3=0;b3<nb;b3++){ if((bands[b3]||0)>dmax){dmax=bands[b3];dom=b3;} }
+  var chase=afSt.chase%1;
   for(var i=0;i<afPts.length;i++){
-    var p=afPts[i], nx=p[0], ny=p[1], dist=p[2], br=0, hue=0, bi;
-    if(mode==='bloom'){ if(afRing.on) br=Math.exp(-Math.pow((dist-afRing.ph)/0.16,2)); br*=(0.45+0.55*s.level); hue=210-170*s.bass; }
-    else if(mode==='spectrum'){ bi=Math.min(nb-1,Math.floor(nx*nb)); br=bands[bi]||0; hue=280*nx; }
-    else if(mode==='vu'){ br=(ny<=s.level)?(0.4+0.6*(1-(s.level-ny))):0; hue=120*(1-ny); }
-    else { bi=Math.min(nb-1,Math.floor(dist*nb)); br=bands[bi]||0; hue=200+100*dist; }
+    var p=afPts[i], nx=p[0], ny=p[1], dist=p[2], br=0, hue=0, sat=1, bi, dd, tw, wv;
+    switch(mode){
+      case 'bloom': if(afSt.ring) br=Math.exp(-Math.pow((dist-afSt.ringPh)/0.16,2)); br*=(0.45+0.55*lvl); hue=210-170*bass; break;
+      case 'spectrum': bi=Math.min(nb-1,Math.floor(nx*nb)); br=bands[bi]||0; hue=280*nx; break;
+      case 'vu': br=(ny<=lvl)?(0.4+0.6*(1-(lvl-ny))):0; hue=120*(1-ny); break;
+      case 'radial': bi=Math.min(nb-1,Math.floor(dist*nb)); br=bands[bi]||0; hue=200+100*dist; break;
+      case 'pulse': br=0.1+0.9*lvl; hue=210-170*bass+90*treble; break;
+      case 'spike': br=beat; hue=40+200*bass; break;
+      case 'chase': dd=Math.abs(nx-chase); dd=Math.min(dd,1-dd); br=Math.exp(-Math.pow(dd/0.10,2))*(0.4+0.6*lvl); hue=200+120*nx; break;
+      case 'sparkle': tw=Math.sin(afSt.wave*6+nx*53+ny*97); br=(tw>(1-0.5*lvl-(trig?0.4:0)))?1:0; hue=180+120*ny; break;
+      case 'wave': wv=0.5+0.5*Math.sin((nx+ny)*9.42-afSt.wave*6.2832); br=wv*(0.25+0.75*lvl); hue=260*wv; break;
+      case 'fireworks': afSt.bursts.forEach(function(bb){ var rd=Math.hypot(nx-bb.x,ny-bb.y); br+=Math.exp(-Math.pow((rd-bb.age*0.9)/0.08,2))*(1-bb.age/1.2); }); br=Math.min(1,br)*(0.5+0.5*lvl); hue=30+300*bass; break;
+      case 'rain': afSt.rain.forEach(function(rf){ if(rf>=0) br+=Math.exp(-Math.pow((ny-rf)/0.10,2)); }); br=Math.min(1,br); hue=200; break;
+      case 'strobe': br=(beat>0.5)?1:0; sat=0; break;
+      case 'colorwash': br=0.15+0.85*lvl; hue=280*dom/Math.max(1,nb-1); break;
+      default: br=(dist<=lvl*1.15)?(0.5+0.5*lvl):0; hue=140-120*dist; break;
+    }
     if(br<0)br=0; if(br>1)br=1;
-    ctx.globalAlpha=0.16+0.84*br; ctx.fillStyle=afHsv(hue,1,Math.max(0.05,br));
+    ctx.globalAlpha=0.14+0.86*br; ctx.fillStyle=afHsv(hue,sat,Math.max(0.05,br));
     ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*br, 0, 6.283); ctx.fill();
   }
   ctx.globalAlpha=1;

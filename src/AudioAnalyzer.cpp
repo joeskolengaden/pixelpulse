@@ -63,15 +63,29 @@ void AudioAnalyzer::pushSamples(const float* mono, int n) {
 }
 
 void AudioAnalyzer::analyzeWindow() {
-    // RMS level on the raw window
+    // effectiveGain folds the manual gain with a slow per-song auto-level factor
+    // so a quiet song and a loud song drive the analysis similarly.
+    float eg = mGain * (mAutoLevel ? mAutoGainFactor : 1.f);
+
+    // RMS level on the raw window (raw = pre-gain, for gate + calibration)
     double sumSq = 0.0;
     std::vector<float> w(mFftSize);
     for (int i = 0; i < mFftSize; ++i) {
         sumSq += (double)mAccum[i] * mAccum[i];
-        w[i] = mAccum[i] * mHann[i] * mGain;
+        w[i] = mAccum[i] * mHann[i] * eg;
     }
     float rms = (float)std::sqrt(sumSq / mFftSize);
     mRawLevel.store(rms, std::memory_order_relaxed);  // pre-gain/AGC, for calibration
+
+    // adapt the auto-level factor very slowly toward a target average loudness
+    if (mAutoLevel) {
+        if (rms > mGate) mAvgRaw = 0.999f * mAvgRaw + 0.001f * rms;
+        float desired = (mAvgRaw > 1e-4f) ? (0.06f / mAvgRaw) : 1.f;
+        if (desired < 0.2f) desired = 0.2f; else if (desired > 30.f) desired = 30.f;
+        mAutoGainFactor += (desired - mAutoGainFactor) * 0.001f;
+    } else {
+        mAutoGainFactor = 1.f;
+    }
 
     kiss_fftr(mCfg, w.data(), mFreq.data());
     const int nb = mFftSize / 2 + 1;
@@ -96,7 +110,7 @@ void AudioAnalyzer::analyzeWindow() {
         mLevelPeak = std::max(mLevelPeak * decay, rms);
         lvl = (mLevelPeak > 1e-6f) ? (rms / mLevelPeak) : 0.f;
     } else {
-        lvl = std::min(1.f, rms * mGain * 6.0f);
+        lvl = std::min(1.f, rms * eg * 6.0f);
     }
     if (!active) lvl = 0.f;
 
