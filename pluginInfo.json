@@ -35,7 +35,12 @@
 		{ "key": "hu_amount", "label": "Hue amount", "type": "int", "default": 60, "min": 0, "max": 180, "step": 5, "unit": "deg", "group": "visualizer", "appliesLive": true, "widget": "slider" },
 
 		{ "key": "speed_mode", "label": "Audio → speed", "type": "enum", "default": "off", "options": ["off", "level", "beat"], "group": "speed", "appliesLive": true, "help": "Modulate playback speed from the audio. Light-only sequences (audio-backed shows are slaved to their media clock)." },
-		{ "key": "speed_amount", "label": "Speed amount", "type": "int", "default": 50, "min": 0, "max": 300, "step": 5, "unit": "%", "group": "speed", "appliesLive": true, "widget": "slider", "help": "Max speed-up at full level/beat." }
+		{ "key": "speed_amount", "label": "Speed amount", "type": "int", "default": 50, "min": 0, "max": 300, "step": 5, "unit": "%", "group": "speed", "appliesLive": true, "widget": "slider", "help": "Max speed-up at full level/beat." },
+
+		{ "key": "spatial_enabled", "label": "Spatial (xLights layout)", "type": "bool", "default": false, "group": "spatial", "appliesLive": true, "help": "Render the whole display from the audio by each prop's real-world position. Requires an uploaded xlights_rgbeffects.xml; overrides the range pipeline." },
+		{ "key": "spatial_mode", "label": "Spatial mode", "type": "enum", "default": "bloom", "options": ["bloom", "spectrum", "vu", "radial"], "group": "spatial", "appliesLive": true, "help": "bloom = beats radiate from centre; spectrum = frequency across X; vu = loudness by height; radial = frequency centre-out." },
+		{ "key": "spatial_intensity", "label": "Spatial intensity", "type": "int", "default": 100, "min": 0, "max": 200, "step": 5, "unit": "%", "group": "spatial", "appliesLive": true, "widget": "slider" },
+		{ "key": "spatial_layoutUpload", "label": "Layout file (xlights_rgbeffects.xml)", "type": "file", "accept": ".xml", "uploadUrl": "plugin.php?plugin=pixelpulse&page=uploadlayout.php&nopage=1", "field": "layout", "group": "spatial", "appliesLive": true, "help": "Upload xlights_rgbeffects.xml; parsed on-device into per-prop positions + channel ranges." }
 	],
 	"versions": [
 		{ "minFPPVersion": "5.0", "maxFPPVersion": "0", "branch": "main", "sha": "" }

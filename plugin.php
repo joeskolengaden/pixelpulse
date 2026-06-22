@@ -111,11 +111,43 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Speed amount</div><div><?php echo afNum('speed_amount', '50', '0', '300', '5', '%'); ?></div>
     </div></div>
   </div>
+
+  <div class="card">
+    <div class="head"><span class="t">Spatial (xLights layout)</span><?php echo afTog('spatial_enabled'); ?></div>
+    <div class="body"><div class="grid">
+      <div class="lab">Layout file</div>
+      <div>
+        <input type="file" id="af-layout" accept=".xml">
+        <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
+        <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
+      </div>
+      <div class="lab">Mode</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">drives effects by physical prop position</span></div>
+      <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
+      <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
+    </div></div>
+  </div>
 </div>
 
 <script>
 function afxToggle(cb){}
 function afApi(p){ return 'plugin.php?plugin=pixelpulse&page=' + p + '&nopage=1'; }
+// spatial layout upload + status
+function afLayoutStatus(s){
+  var el=document.getElementById('af-layout-status'); if(!el) return;
+  if(s && s.count>0){ el.textContent='layout loaded: '+s.count+' props'; el.style.color='#2f9e6f'; }
+  else { el.textContent='no layout uploaded — choose your xlights_rgbeffects.xml'; el.style.color='#6b7280'; }
+}
+function afRefreshLayout(){ fetch(afApi('uploadlayout.php')).then(function(r){return r.json();}).then(afLayoutStatus).catch(function(){}); }
+function afUpload(){
+  var inp=document.getElementById('af-layout'), f=inp&&inp.files[0];
+  if(!f){ alert('Choose your xlights_rgbeffects.xml first'); return; }
+  var el=document.getElementById('af-layout-status'); el.textContent='uploading & parsing…'; el.style.color='#6b7280';
+  var fd=new FormData(); fd.append('layout',f);
+  fetch(afApi('uploadlayout.php'),{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(s){
+    if(s.ok){ afLayoutStatus(s); } else { el.textContent='error: '+(s.error||'parse failed'); el.style.color='#e24b4a'; }
+  }).catch(function(){ el.textContent='upload failed'; el.style.color='#e24b4a'; });
+}
+afRefreshLayout();
 // build band bars
 var afBands = document.getElementById('af-bands');
 for (var i=0;i<8;i++){ var d=document.createElement('div'); afBands.appendChild(d); }

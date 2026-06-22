@@ -21,7 +21,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <fstream>
 #include <string>
+#include <vector>
+
+#include <sys/stat.h>
 
 #include "Plugin.h"
 #include "Sequence.h"
@@ -68,6 +73,16 @@ void rgb2hsv(uint8_t R, uint8_t G, uint8_t B, double& h, double& s, double& v) {
     else h = 60 * (((r - g) / d) + 4);
     if (h < 0) h += 360;
 }
+// One prop from the parsed xLights layout: its absolute channel range plus a
+// normalized position (0..1 within the display bounds) and distance from the
+// display centre. Written by uploadlayout.php, read here for spatial reactions.
+struct LayoutProp {
+    long start;   // absolute 1-based start channel
+    long count;   // channel count
+    int step;     // channels per node (3 RGB / 4 RGBW)
+    float nx, ny, nz, dist;
+};
+const char* const kLayoutPath = "/home/fpp/media/config/pixelpulse_layout.txt";
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -75,7 +90,9 @@ public:
     AudioFxPlugin() : FPPPlugin("pixelpulse") {
         mLastReload = std::chrono::steady_clock::now();
         mLastStatus = mLastReload;
+        mLastFrame = mLastReload;
         applySettings();
+        loadLayoutIfChanged();
         mAnalyzer.configure(mSampleRate, 1024, 8);
         restartCapture();
     }
@@ -88,6 +105,19 @@ public:
         if (!shouldModify()) return;
 
         applySpeed();  // Phase 3: audio -> playback speed (light-only sequences)
+
+        // Phase 4: layout-aware spatial reactions. When a parsed xLights layout
+        // is loaded, the effect is driven by each prop's real-world position, so
+        // it renders the whole display (and takes over from the range pipeline).
+        if (mSpatialEnabled && !mLayout.empty()) {
+            auto now = std::chrono::steady_clock::now();
+            float dt = std::chrono::duration<float>(now - mLastFrame).count();
+            mLastFrame = now;
+            if (dt < 0.f) dt = 0.f;
+            if (dt > 0.2f) dt = 0.2f;
+            applySpatial(d, dt);
+            return;
+        }
 
         long si, by;
         if (!range(si, by)) return;
@@ -188,6 +218,82 @@ private:
             hsv2rgb(h + shift, s, v, d[i], d[i + 1], d[i + 2]);
         }
     }
+    // Phase 4: drive each prop by its physical position in the display.
+    //   1 bloom    - beats radiate a shockwave outward from the centre
+    //   2 spectrum - frequency mapped across X (bass left -> treble right)
+    //   3 vu       - loudness fills the display bottom-to-top by height
+    //   4 radial   - frequency mapped centre-out (bass middle -> treble edge)
+    void applySpatial(uint8_t* d, float dt) {
+        const long cap = (long)FPPD_MAX_CHANNELS;
+        const int nb = mAnalyzer.numBands();
+        const float level = mAnalyzer.level();
+        const float beat = mAnalyzer.beat();
+        const float bass = mAnalyzer.bass();
+        const float gainI = mSpatialIntensity / 100.f;
+
+        if (mSpatialMode == 1) {  // advance the beat shockwave
+            if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; mRingOn = true; mRingPhase = 0.f; }
+            if (beat < 0.2f) mBeatLatch = false;
+            if (mRingOn) { mRingPhase += dt / 0.6f; if (mRingPhase > 1.5f) mRingOn = false; }
+        }
+
+        for (const LayoutProp& p : mLayout) {
+            long s = p.start - 1;
+            if (s < 0 || s >= cap) continue;
+            long c = p.count;
+            if (s + c > cap) c = cap - s;
+            if (c < 3) continue;
+
+            float bright = 0.f;
+            double hue = 0.0;
+            if (mSpatialMode == 1) {
+                if (mRingOn) bright = std::exp(-std::pow((p.dist - mRingPhase) / 0.16f, 2.f));
+                bright *= (0.45f + 0.55f * level);
+                hue = 210.0 - 170.0 * bass;            // bass shifts blue -> red
+            } else if (mSpatialMode == 2) {
+                int bi = (int)(p.nx * nb); if (bi >= nb) bi = nb - 1; if (bi < 0) bi = 0;
+                bright = mAnalyzer.band(bi);
+                hue = 280.0 * p.nx;
+            } else if (mSpatialMode == 3) {
+                bright = (p.ny <= level) ? (0.4f + 0.6f * (1.f - (level - p.ny))) : 0.f;
+                hue = 120.0 * (1.0 - p.ny);            // green low -> red high
+            } else {
+                int bi = (int)(p.dist * nb); if (bi >= nb) bi = nb - 1; if (bi < 0) bi = 0;
+                bright = mAnalyzer.band(bi);
+                hue = 200.0 + 100.0 * p.dist;
+            }
+            bright *= gainI;
+            if (bright < 0.f) bright = 0.f;
+            if (bright > 1.f) bright = 1.f;
+
+            uint8_t R, G, B;
+            hsv2rgb(hue, 1.0, bright, R, G, B);
+            for (long i = 0; i + 2 < c; i += p.step) { d[s + i] = R; d[s + i + 1] = G; d[s + i + 2] = B; }
+        }
+    }
+
+    // Load the parsed layout if the file changed (uploaded). Cheap flat format
+    // so we avoid pulling a JSON/XML dependency into the .so.
+    void loadLayoutIfChanged() {
+        struct stat stt;
+        if (stat(kLayoutPath, &stt) != 0) { mLayout.clear(); mLayoutMtime = 0; return; }
+        if (stt.st_mtime == mLayoutMtime && !mLayout.empty()) return;
+        mLayoutMtime = stt.st_mtime;
+        std::ifstream in(kLayoutPath);
+        if (!in.good()) return;
+        std::string magic; int ver = 0, n = 0;
+        in >> magic >> ver >> n;
+        if (magic != "PIXELPULSE_LAYOUT" || n <= 0 || n > 500000) { mLayout.clear(); return; }
+        std::vector<LayoutProp> tmp; tmp.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            LayoutProp p;
+            if (!(in >> p.start >> p.count >> p.step >> p.nx >> p.ny >> p.nz >> p.dist)) break;
+            if (p.step < 1) p.step = 3;
+            tmp.push_back(p);
+        }
+        mLayout.swap(tmp);
+    }
+
     bool range(long& startIdx, long& bytes) const {
         long count = mCount;
         if (count < 1) return false;
@@ -211,6 +317,7 @@ private:
             int prevRate = mSampleRate;
             reloadSettings();
             applySettings();
+            loadLayoutIfChanged();
             mAnalyzer.setGain(mGain);
             mAnalyzer.setGate(mGate);
             mAnalyzer.setSensitivity(mSensitivity);
@@ -269,6 +376,11 @@ private:
         std::string sm = cfg("speed_mode");
         mSpeedMode = (sm == "level") ? 1 : (sm == "beat") ? 2 : 0;
         mSpeedAmount = std::min(300L, std::max(0L, toLong(cfg("speed_amount"), 50)));
+
+        mSpatialEnabled = toLong(cfg("spatial_enabled"), 0) != 0;
+        std::string spm = cfg("spatial_mode");
+        mSpatialMode = (spm == "spectrum") ? 2 : (spm == "vu") ? 3 : (spm == "radial") ? 4 : 1;
+        mSpatialIntensity = std::min(200L, std::max(0L, toLong(cfg("spatial_intensity"), 100)));
     }
 
     AudioAnalyzer mAnalyzer;
@@ -291,6 +403,16 @@ private:
     int mSpeedMode = 0;        // 0 off, 1 level, 2 beat
     long mSpeedAmount = 50;
     float mSpeedMult = 1.0f;
+
+    // Phase 4: spatial / layout-aware reactions
+    std::vector<LayoutProp> mLayout;
+    time_t mLayoutMtime = 0;
+    bool mSpatialEnabled = false;
+    int mSpatialMode = 1;      // 1 bloom, 2 spectrum, 3 vu, 4 radial
+    long mSpatialIntensity = 100;
+    std::chrono::steady_clock::time_point mLastFrame;
+    bool mBeatLatch = false, mRingOn = false;
+    float mRingPhase = 0.f;
 };
 
 extern "C" {
