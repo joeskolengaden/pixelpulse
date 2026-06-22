@@ -37,7 +37,7 @@ if (isset($_GET['points'])) {
             if (count($p) >= 6) $all[] = array(floatval($p[1]), floatval($p[2]), floatval($p[4]), intval($p[5]));
         }
         fclose($fh);
-        $stride = max(1, (int)ceil(count($all) / 1500));   // cap preview to ~1500 pts
+        $stride = max(1, (int)ceil(count($all) / 700));    // ~700 pts; matches the plugin's frame stride
         for ($i = 0; $i < count($all); $i += $stride) $pts[] = $all[$i];
     }
     echo json_encode(array('count' => $hd['count'], 'ar' => $hd['ar'], 'groups' => $hd['groups'], 'pts' => $pts));

@@ -123,6 +123,7 @@ public:
         mLastReload = std::chrono::steady_clock::now();
         mLastStatus = mLastReload;
         mLastFrame = mLastReload;
+        mLastFrameWrite = mLastReload;
         applySettings();
         loadLayoutIfChanged();
         mAnalyzer.configure(mSampleRate, 1024, 8);
@@ -148,6 +149,7 @@ public:
             if (dt < 0.f) dt = 0.f;
             if (dt > 0.2f) dt = 0.2f;
             applySpatial(d, dt);
+            writeFramePreview(d);
             return;
         }
 
@@ -185,6 +187,7 @@ public:
                 }
             }
         }
+        writeFramePreview(d);
     }
 
 private:
@@ -541,6 +544,32 @@ private:
         fclose(f);
     }
 
+    // Snapshot the ACTUAL output colours at a downsampled set of LED positions so
+    // the settings page can preview what's really playing (sequence + reactions /
+    // spatial effect), not just a simulation. Same stride as uploadlayout's
+    // points, so the preview can line colours up with positions.
+    void writeFramePreview(const uint8_t* d) {
+        if (mNodes.empty() || d == nullptr) return;
+        auto now = std::chrono::steady_clock::now();
+        if (now - mLastFrameWrite < std::chrono::milliseconds(100)) return;
+        mLastFrameWrite = now;
+        const int n = (int)mNodes.size();
+        int stride = (n + 699) / 700; if (stride < 1) stride = 1;
+        const long cap = (long)FPPD_MAX_CHANNELS;
+        FILE* f = fopen("/dev/shm/pixelpulse_frame.txt", "w");
+        if (!f) return;
+        static const char* H = "0123456789abcdef";
+        std::string hex; hex.reserve(2200); int cnt = 0;
+        for (int i = 0; i < n; i += stride) {
+            long s = mNodes[i].ch - 1; uint8_t r = 0, g = 0, b = 0;
+            if (s >= 0 && s + 2 < cap) { r = d[s]; g = d[s + 1]; b = d[s + 2]; }
+            char buf[7] = {H[r >> 4], H[r & 15], H[g >> 4], H[g & 15], H[b >> 4], H[b & 15], 0};
+            hex += buf; cnt++;
+        }
+        fprintf(f, "%d\n%s", cnt, hex.c_str());
+        fclose(f);
+    }
+
     void applySettings() {
         mEnabled = toLong(cfg("enabled"), 0) != 0;
         mOnlyWhenPlaying = toLong(cfg("onlyWhenPlaying"), 1) != 0;
@@ -589,7 +618,7 @@ private:
 
     AudioAnalyzer mAnalyzer;
     AlsaCapture mCapture;
-    std::chrono::steady_clock::time_point mLastReload, mLastStatus;
+    std::chrono::steady_clock::time_point mLastReload, mLastStatus, mLastFrameWrite;
 
     bool mEnabled = false, mOnlyWhenPlaying = true;
     std::string mDevice = "default";

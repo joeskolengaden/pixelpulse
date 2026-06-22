@@ -59,7 +59,10 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
           <div class="help" id="af-hint" style="margin-top:8px"></div>
         </div>
         <div id="af-prevwrap" style="display:none;text-align:center">
-          <div class="help" style="margin-bottom:5px;text-align:left">Spatial preview — mode: <b id="af-prevmode">bloom</b></div>
+          <div class="help" style="margin-bottom:5px;text-align:left;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <select id="af-prevsrc" style="font-size:12px;padding:2px 6px"><option value="live">Live output</option><option value="effect">Effect preview</option></select>
+            <span id="af-prevmode">bloom</span>
+          </div>
           <canvas id="af-preview" width="120" height="240" style="background:#0e1116;border-radius:8px;display:inline-block;max-width:100%"></canvas>
         </div>
       </div>
@@ -210,7 +213,10 @@ function afPrevLoop(){
   var ctx=afCanvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   var s=window.afLast||{level:0,beat:0,bass:0,treble:0,bands:[]};
   var mode=s.spatialMode||((document.getElementById('af-spatialmode')||{}).value)||'bloom';
-  document.getElementById('af-prevmode').textContent=mode+(s.musicType?(' · music: '+s.musicType):'');
+  var src=(document.getElementById('af-prevsrc')||{}).value||'live';
+  var frame=window.afFrame, useLive=(src==='live' && frame && frame.length>=afPts.length-2);
+  document.getElementById('af-prevmode').textContent=useLive ? 'actual output on the lights'
+    : (mode+(s.musicType?(' · music: '+s.musicType):'')+(src==='live'?' (start playback to see live output)':''));
   var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
   var pad=8, sw=W-2*pad, sh=H-2*pad;
   ctx.fillStyle='rgba(150,162,178,0.26)';                 // base layer: the whole layout shape, always visible
@@ -230,6 +236,14 @@ function afPrevLoop(){
   var chase=afSt.chase%1;
   for(var i=0;i<afPts.length;i++){
     var p=afPts[i], nx=p[0], ny=p[1], dist=p[2], br=0, hue=0, sat=1, bi, dd, tw, wv;
+    if(useLive){                                  // real colours sampled from the output
+      var fc=frame[i]; if(!fc) continue;
+      var lum=Math.min(1,(fc[0]+fc[1]+fc[2])/600);
+      if(lum<=0.015) continue;
+      ctx.globalAlpha=0.2+0.8*lum; ctx.fillStyle='rgb('+fc[0]+','+fc[1]+','+fc[2]+')';
+      ctx.beginPath(); ctx.arc(pad+nx*sw, pad+(1-ny)*sh, 1.4+2.6*lum, 0, 6.283); ctx.fill();
+      continue;
+    }
     if(gfilter && !((p[3]||0)&gbit)) continue;   // only the selected group lights up
     switch(mode){
       case 'bloom': if(afSt.ring) br=Math.exp(-Math.pow((dist-afSt.ringPh)/0.16,2)); br*=(0.45+0.55*lvl); hue=210-170*bass; break;
@@ -296,6 +310,13 @@ fetch(afApi('devices.php')).then(function(r){return r.json();}).then(function(li
 // live meters
 function pct(v){ return Math.max(0,Math.min(100,Math.round(v*100)))+'%'; }
 setInterval(function(){
+  fetch(afApi('frame.php')).then(function(r){return r.text();}).then(function(t){
+    if(!t){ window.afFrame=null; return; }
+    var nl=t.indexOf('\n'); if(nl<0){ window.afFrame=null; return; }
+    var hex=t.slice(nl+1).trim(), arr=[];
+    for(var i=0;i+6<=hex.length;i+=6) arr.push([parseInt(hex.substr(i,2),16),parseInt(hex.substr(i+2,2),16),parseInt(hex.substr(i+4,2),16)]);
+    window.afFrame=arr;
+  }).catch(function(){ window.afFrame=null; });
   fetch(afApi('status.php')).then(function(r){return r.json();}).then(function(s){
     window.afLast=s;
     var dev=document.getElementById('af-dev'), txt=document.getElementById('af-devtxt');
