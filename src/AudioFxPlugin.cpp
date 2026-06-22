@@ -669,11 +669,26 @@ private:
         fclose(f);
         return c == '1' ? 1 : (c == '0' ? 0 : -1);
     }
-    // A configured physical switch gates the plugin on/off. If unconfigured or
-    // unreadable, mSwitchOn stays true (no gating).
+    // Read a GPIO line via libgpiod's gpioget, applying a pull bias (the only
+    // way to set the internal pull resistor). Returns 0/1 or -1 if unavailable.
+    int gpiogetRead(int chip, int line, int pull) {
+        if (chip < 0 || line < 0) return -1;
+        const char* bias = pull == 1 ? "pull-up" : (pull == 2 ? "pull-down" : "disable");
+        char cmd[160];
+        snprintf(cmd, sizeof(cmd), "gpioget --bias=%s gpiochip%d %d 2>/dev/null", bias, chip, line);
+        FILE* f = popen(cmd, "r");
+        if (!f) return -1;
+        int c = fgetc(f);
+        pclose(f);
+        return c == '1' ? 1 : (c == '0' ? 0 : -1);
+    }
+    // A configured physical switch gates the plugin. Prefer gpioget (so the pull
+    // bias applies); fall back to sysfs by GPIO number. Unconfigured/unreadable
+    // leaves mSwitchOn true (never gets stuck off).
     void pollSwitch() {
-        if (!mSwitchEnabled || mSwitchGpio < 0) { mSwitchOn = true; return; }
-        int v = readGpio(mSwitchGpio);
+        if (!mSwitchEnabled) { mSwitchOn = true; return; }
+        int v = gpiogetRead(mSwitchChip, mSwitchLine, mSwitchPull);
+        if (v < 0 && mSwitchGpio >= 0) v = readGpio(mSwitchGpio);
         if (v >= 0) mSwitchOn = mSwitchActiveHigh ? (v == 1) : (v == 0);
     }
     void pushAnalyzerParams() {
@@ -750,6 +765,10 @@ private:
         mOnlyWhenPlaying = toLong(cfg("onlyWhenPlaying"), 1) != 0;
         mSwitchEnabled = toLong(cfg("switch_enabled"), 0) != 0;
         mSwitchGpio = (int)toLong(cfg("switch_gpio"), -1);
+        mSwitchChip = (int)toLong(cfg("switch_chip"), -1);
+        mSwitchLine = (int)toLong(cfg("switch_line"), -1);
+        std::string sp = cfg("switch_pull");
+        mSwitchPull = (sp == "up") ? 1 : (sp == "down") ? 2 : 0;
         mSwitchActiveHigh = cfg("switch_active") != "low";  // default active-high
         mDevice = cfg("audioDevice");
         if (mDevice.empty()) mDevice = "default";
@@ -801,7 +820,7 @@ private:
 
     bool mEnabled = false, mOnlyWhenPlaying = true;
     bool mSwitchEnabled = false, mSwitchActiveHigh = true, mSwitchOn = true;
-    int mSwitchGpio = -1;
+    int mSwitchGpio = -1, mSwitchChip = -1, mSwitchLine = -1, mSwitchPull = 0;  // pull: 0 none,1 up,2 down
     std::string mDevice = "default";
     int mSampleRate = 44100;
     float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;

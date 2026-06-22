@@ -84,9 +84,10 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <div class="card">
     <div class="head"><span class="t">Physical switch (GPIO)</span><?php echo afTog('switch_enabled'); ?><span class="stat" style="margin-left:8px"><span class="dot" id="af-sw"></span><span id="af-swtxt" style="font-size:12.5px;color:#6b7280"></span></span></div>
     <div class="body"><div class="grid">
-      <div class="lab">GPIO number</div><div><?php echo afInt('switch_gpio', '-1', -1); ?> <span class="help">sysfs GPIO of the switch pin (BBB P9.12 = 60; Pi: the BCM number)</span></div>
-      <div class="lab">Active level</div><div><select onChange="SetPluginSetting('pixelpulse','switch_active',this.value,0,0);"><?php foreach (array('high','low') as $m) echo "<option value='$m'" . (af_get('switch_active','high')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">high = on at 3.3V; low = on at GND (use a pull resistor)</span></div>
-      <div class="lab"></div><div class="help">A hardware switch enables/disables the plugin. It runs only when both the software toggle above and the switch are on. Read about twice a second.</div>
+      <div class="lab">GPIO pin</div><div><select id="af-gpiopin" onChange="afGpioPick(this)"><option value="">&mdash; select a pin &mdash;</option></select> <span class="help">from FPP's pin list</span></div>
+      <div class="lab">Pull resistor</div><div><select onChange="SetPluginSetting('pixelpulse','switch_pull',this.value,0,0);"><?php foreach (array('none'=>'none (external)','up'=>'pull-up (high)','down'=>'pull-down (low)') as $v=>$lbl) echo "<option value='$v'" . (af_get('switch_pull','none')===$v?' selected':'') . ">$lbl</option>"; ?></select></div>
+      <div class="lab">Active level</div><div><select onChange="SetPluginSetting('pixelpulse','switch_active',this.value,0,0);"><?php foreach (array('high','low') as $m) echo "<option value='$m'" . (af_get('switch_active','high')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">which level enables the plugin</span></div>
+      <div class="lab"></div><div class="help">A hardware switch enables/disables the plugin (runs only when both the software toggle and the switch are on). Pin list and pull bias come from FPP's GPIO system. Read ~2x/sec.</div>
     </div></div>
   </div>
 
@@ -175,6 +176,19 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
 <script>
 function afxToggle(cb){}
 function afApi(p){ return 'plugin.php?plugin=pixelpulse&page=' + p + '&nopage=1'; }
+// physical-switch GPIO pin dropdown, populated from FPP's pin list
+function afGpioPick(sel){ var o=sel.options[sel.selectedIndex]; if(!o||!o.value) return; var pp=o.value.split(':');
+  SetPluginSetting('pixelpulse','switch_gpio',pp[0],0,0);
+  SetPluginSetting('pixelpulse','switch_chip',pp[1],0,0);
+  SetPluginSetting('pixelpulse','switch_line',pp[2],0,0); }
+fetch('api/gpio').then(function(r){return r.json();}).then(function(list){
+  var sel=document.getElementById('af-gpiopin'); if(!sel) return;
+  var cur='<?php echo htmlspecialchars(af_get("switch_gpio","-1")); ?>';
+  (list||[]).forEach(function(g){ var o=document.createElement('option');
+    o.value=g.gpio+':'+g.gpioChip+':'+g.gpioLine;
+    o.textContent=g.pin+'  (gpio '+g.gpio+((g.supportsPullUp||g.supportsPullDown)?', pull-able':'')+')';
+    if((''+g.gpio)===cur) o.selected=true; sel.appendChild(o); });
+}).catch(function(){});
 // spatial layout upload + status
 function afLayoutStatus(s){
   var el=document.getElementById('af-layout-status'); if(!el) return;
