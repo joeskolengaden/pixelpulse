@@ -115,6 +115,32 @@ const int kSmartPools[5][6] = {
     {7, 2, 3, 19, 4, 16},     // groove      : chase, spectrum, vu, comet, radial, bars
 };
 const int kSmartPoolLen = 6;
+
+// Colour palettes (WLED-inspired gradients). Designs express colour as a 0..1
+// position; when a palette is active that position is mapped through it instead
+// of raw HSV, for cohesive themed colour. Index -1 = "auto" (raw HSV).
+struct PStop { float p; uint8_t r, g, b; };
+struct Palette { const char* name; int n; PStop s[7]; };
+const Palette kPalettes[] = {
+    {"rainbow", 7, {{0,255,0,0},{0.17f,255,255,0},{0.33f,0,255,0},{0.5f,0,255,255},{0.66f,0,0,255},{0.83f,255,0,255},{1,255,0,0}}},
+    {"fire",    5, {{0,0,0,0},{0.3f,200,0,0},{0.6f,255,110,0},{0.85f,255,230,0},{1,255,255,200}}},
+    {"ocean",   5, {{0,0,0,50},{0.3f,0,40,130},{0.6f,0,120,190},{0.85f,0,210,200},{1,170,255,255}}},
+    {"forest",  5, {{0,0,40,0},{0.3f,0,110,0},{0.6f,70,170,0},{0.85f,170,210,0},{1,220,255,150}}},
+    {"sunset",  5, {{0,40,0,70},{0.3f,170,0,80},{0.55f,255,80,0},{0.8f,255,180,0},{1,255,240,130}}},
+    {"aurora",  5, {{0,0,40,30},{0.3f,0,170,120},{0.55f,90,225,160},{0.8f,150,120,225},{1,220,160,255}}},
+    {"party",   6, {{0,255,0,130},{0.2f,255,0,0},{0.4f,255,160,0},{0.6f,0,200,90},{0.8f,0,120,255},{1,180,0,255}}},
+    {"lava",    5, {{0,0,0,0},{0.3f,120,0,0},{0.6f,225,45,0},{0.85f,255,140,0},{1,255,225,90}}},
+    {"cloud",   5, {{0,0,0,90},{0.3f,0,40,170},{0.6f,90,90,225},{0.85f,160,185,255},{1,255,255,255}}},
+    {"sherbet", 5, {{0,255,80,160},{0.3f,255,160,120},{0.55f,255,255,130},{0.8f,160,255,200},{1,200,200,255}}},
+};
+const int kNumPalettes = 10;
+int paletteIndex(const std::string& s) {
+    if (s.empty() || s == "auto") return -1;
+    for (int i = 0; i < kNumPalettes; ++i) if (s == kPalettes[i].name) return i;
+    return -1;
+}
+// category -> palette name index for the smart auto-DJ (dance/ambient/bass/bright/groove)
+const int kCatPalette[5] = {6, 5, 7, 9, 2};  // party, aurora, lava, sherbet, ocean
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -286,7 +312,7 @@ private:
     // change, a new song, or every ~16 s for variety. Returns 1-based mode.
     int smartSelect(float dt) {
         bool repick = false;
-        if (mDetectedCat != mSmartCategory) { mSmartCategory = mDetectedCat; repick = true; }
+        if (mDetectedCat != mSmartCategory) { mSmartCategory = mDetectedCat; mSmartPalette = kCatPalette[mDetectedCat]; repick = true; }
         if (mSongChanged) { mSongChanged = false; mSmartPoolIdx++; repick = true; }
         mSmartTimer += dt;
         if (mSmartTimer >= 16.f) { mSmartPoolIdx++; repick = true; }
@@ -295,6 +321,19 @@ private:
             mSmartMode = kSmartPools[mSmartCategory][mSmartPoolIdx % kSmartPoolLen];
         }
         return mSmartMode;
+    }
+
+    // Map a 0..1 position through a palette, scaled by brightness.
+    void paletteRGB(int pi, float t, float br, uint8_t& R, uint8_t& G, uint8_t& B) {
+        t -= std::floor(t);
+        const Palette& P = kPalettes[pi];
+        int i = 0; while (i < P.n - 1 && t > P.s[i + 1].p) i++;
+        const PStop& a = P.s[i]; const PStop& b = P.s[i < P.n - 1 ? i + 1 : i];
+        float span = b.p - a.p, f = span > 1e-4f ? (t - a.p) / span : 0.f;
+        if (f < 0) f = 0; if (f > 1) f = 1;
+        R = clamp8((int)((a.r + (b.r - a.r) * f) * br));
+        G = clamp8((int)((a.g + (b.g - a.g) * f) * br));
+        B = clamp8((int)((a.b + (b.b - a.b) * f) * br));
     }
 
     // Render one LED for a given design, using the per-frame context (mCtx*) and
@@ -351,7 +390,8 @@ private:
         }
         br *= mSpatialIntensity / 100.f;
         if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
-        hsv2rgb(hue, sat, br, R, G, B);
+        if (mCtxPalette >= 0) paletteRGB(mCtxPalette, (float)(std::fmod(hue, 360.0) / 360.0), br, R, G, B);
+        else hsv2rgb(hue, sat, br, R, G, B);
     }
 
     // Phase 4: drive each LED by its physical position. 22 designs, optionally
@@ -420,6 +460,8 @@ private:
         // stash per-frame context so nodeColor() can render any design
         mCtxLevel = level; mCtxBeat = beat; mCtxBass = bass; mCtxTreble = treble;
         mCtxNb = nb; mCtxDom = dom; mCtxChase = std::fmod(mChasePhase, 1.f); mCtxBeatTrig = beatTrig;
+        // effective palette: explicit choice, else the smart-DJ's pick, else auto (HSV)
+        mCtxPalette = (mPalette >= 0) ? mPalette : (mAutoCycle == 3 ? mSmartPalette : -1);
 
         // optional model-group filter (only light LEDs in the chosen group)
         unsigned long selMask = 0; bool filter = false;
@@ -551,6 +593,10 @@ private:
         mCapture.setChannelMode(mChMode);
         mCapture.start(mDevice, mSampleRate, &mAnalyzer);
     }
+    const char* effPaletteName() const {
+        int ep = (mPalette >= 0) ? mPalette : (mAutoCycle == 3 ? mSmartPalette : -1);
+        return ep >= 0 ? kPalettes[ep].name : "auto";
+    }
     void writeStatus() {
         auto now = std::chrono::steady_clock::now();
         if (now - mLastStatus < std::chrono::milliseconds(120)) return;
@@ -563,12 +609,12 @@ private:
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
             "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,"
-            "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"switchEnabled\":%s,\"switchOn\":%s,\"bands\":[",
+            "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"palette\":\"%s\",\"switchEnabled\":%s,\"switchOn\":%s,\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
             mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(), spatialModeName(mEffectiveMode),
             (mDetectedCat >= 0 && mDetectedCat < kNumMusicTypes) ? kMusicTypes[mDetectedCat] : "",
-            mSwitchEnabled ? "true" : "false", mSwitchOn ? "true" : "false");
+            effPaletteName(), mSwitchEnabled ? "true" : "false", mSwitchOn ? "true" : "false");
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
             fprintf(f, "%s%.3f", b ? "," : "", mAnalyzer.band(b));
         fprintf(f, "]}");
@@ -643,6 +689,7 @@ private:
         mSpatialEnabled = toLong(cfg("spatial_enabled"), 0) != 0;
         mSpatialMode = spatialModeIndex(cfg("spatial_mode"));
         mSpatialIntensity = std::min(200L, std::max(0L, toLong(cfg("spatial_intensity"), 100)));
+        mPalette = paletteIndex(cfg("palette"));
         std::string ac = cfg("spatial_autocycle");
         mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : (ac == "smart") ? 3 : 0;
         mCycleSecs = std::max(3L, toLong(cfg("spatial_cyclesecs"), 20));
@@ -708,6 +755,8 @@ private:
     float mCtxLevel = 0.f, mCtxBeat = 0.f, mCtxBass = 0.f, mCtxTreble = 0.f, mCtxChase = 0.f;
     int mCtxNb = 8, mCtxDom = 0;
     bool mCtxBeatTrig = false;
+    // colour palette: -1 auto (HSV), else index into kPalettes
+    int mPalette = -1, mSmartPalette = 6, mCtxPalette = -1;
     struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
     Burst mBursts[5];
 };
