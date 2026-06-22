@@ -78,7 +78,8 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
     <div class="head"><span class="t">General</span><?php echo afTog('enabled'); ?></div>
     <div class="body"><div class="grid">
       <div class="lab">Run when</div><div><select onChange="SetPluginSetting('pixelpulse','run_when',this.value,0,0);"><?php $rw = af_get('run_when', af_get('onlyWhenPlaying','1')==='1'?'playing':'always'); foreach (array('playing'=>'a sequence is playing','idle'=>'no sequence is playing','always'=>'always (whenever FPP outputs)') as $v=>$lbl) echo "<option value='$v'" . ($rw===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">test patterns are never touched</span></div>
-      <div class="lab">Ambient mode</div><div><label class="sw"><input type="checkbox"<?php echo af_chk('ambient_mode'); ?> onChange="afAmbient(this)"><span class="sl2"></span></label> <span class="help">audio-reactive with no show — loops a blank sequence</span></div>
+      <div class="lab">Ambient mode</div><div><label class="sw"><input type="checkbox"<?php echo af_chk('ambient_mode'); ?> onChange="afAmbient(this)"><span class="sl2"></span></label> <span class="help">loop designs when no show is scheduled; audio reacts on top</span></div>
+      <div class="lab">Ambient playlist</div><div><select id="af-ambientpl" onChange="SetPluginSetting('pixelpulse','ambient_playlist',this.value,0,0);"><option value="">(blank — audio only)</option></select> <span class="help">your designs to loop; use a blend/brightness reaction so they stay visible</span></div>
     </div></div>
   </div>
 
@@ -193,12 +194,18 @@ function afAmbient(cb){
       if(!d||!d.ok) alert('Ambient setup failed (could not write the blank sequence/playlist).');
     }).catch(function(){});
   } else {
-    fetch('api/fppd/status').then(function(r){return r.json();}).then(function(s){   // stop only OUR playlist
+    fetch('api/fppd/status').then(function(r){return r.json();}).then(function(s){   // stop only our ambient loop
       var pl=s.current_playlist, name=(pl&&pl.playlist)||pl||'';
-      if(name==='pixelpulse_ambient') fetch('api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'Stop Now'})});
+      var chosen='<?php echo htmlspecialchars(af_get("ambient_playlist","")); ?>';
+      if(name==='pixelpulse_ambient' || (chosen && name===chosen)) fetch('api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'Stop Now'})});
     }).catch(function(){});
   }
 }
+fetch('api/playlists').then(function(r){return r.json();}).then(function(list){   // populate ambient playlist choices
+  var sel=document.getElementById('af-ambientpl'); if(!sel) return;
+  var cur='<?php echo htmlspecialchars(af_get("ambient_playlist","")); ?>';
+  (list||[]).forEach(function(pl){ if(pl==='pixelpulse_ambient') return; var o=document.createElement('option'); o.value=pl; o.textContent=pl; if(pl===cur) o.selected=true; sel.appendChild(o); });
+}).catch(function(){});
 fetch('api/gpio').then(function(r){return r.json();}).then(function(list){
   var sel=document.getElementById('af-gpiopin'); if(!sel) return;
   var cur='<?php echo htmlspecialchars(af_get("switch_gpio","-1")); ?>';

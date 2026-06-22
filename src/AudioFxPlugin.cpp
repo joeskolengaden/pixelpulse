@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -756,20 +757,31 @@ private:
         if (now - mLastAmbientCheck < std::chrono::seconds(2)) return;
         mLastAmbientCheck = now;
         bool ambient = false, enabled = false;
+        std::string pl;
         std::ifstream cf("/home/fpp/media/config/plugin.pixelpulse");
         std::string line;
         while (std::getline(cf, line)) {
             if (line.rfind("ambient_mode", 0) == 0) ambient = line.find("\"1\"") != std::string::npos;
             else if (line.rfind("enabled ", 0) == 0) enabled = line.find("\"1\"") != std::string::npos;
+            else if (line.rfind("ambient_playlist", 0) == 0) {
+                size_t q1 = line.find('"');
+                if (q1 != std::string::npos) { size_t q2 = line.find('"', q1 + 1); if (q2 != std::string::npos) pl = line.substr(q1 + 1, q2 - q1 - 1); }
+            }
         }
         if (!ambient || !enabled) return;
         if (ChannelTester::INSTANCE.Testing()) return;
         if (sequence != nullptr && sequence->IsSequenceRunning()) return;  // a show is already playing
         if (now - mLastAmbientStart < std::chrono::seconds(3)) return;
         mLastAmbientStart = now;
-        std::system("curl -s -m 3 -X POST -H 'Content-Type: application/json' "
-                    "--data '{\"command\":\"Start Playlist\",\"args\":[\"pixelpulse_ambient\",\"true\",\"true\"]}' "
-                    "http://127.0.0.1/api/command >/dev/null 2>&1 &");
+        // the chosen playlist of real designs, or the blank fallback (audio-only).
+        // sanitize - the name is interpolated into a shell command.
+        bool safe = !pl.empty();
+        for (char c : pl) if (!(std::isalnum((unsigned char)c) || c == ' ' || c == '_' || c == '-' || c == '.')) { safe = false; break; }
+        if (!safe) pl = "pixelpulse_ambient";
+        std::string cmd = "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data "
+                          "'{\"command\":\"Start Playlist\",\"args\":[\"" + pl + "\",\"true\",\"true\"]}' "
+                          "http://127.0.0.1/api/command >/dev/null 2>&1 &";
+        std::system(cmd.c_str());
     }
     const char* effPaletteName() const {
         int ep = (mPalette >= 0) ? mPalette : (mAutoCycle == 3 ? mSmartPalette : -1);
