@@ -23,6 +23,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -73,14 +74,14 @@ void rgb2hsv(uint8_t R, uint8_t G, uint8_t B, double& h, double& s, double& v) {
     else h = 60 * (((r - g) / d) + 4);
     if (h < 0) h += 360;
 }
-// One prop from the parsed xLights layout: its absolute channel range plus a
-// normalized position (0..1 within the display bounds) and distance from the
-// display centre. Written by uploadlayout.php, read here for spatial reactions.
-struct LayoutProp {
-    long start;   // absolute 1-based start channel
-    long count;   // channel count
-    int step;     // channels per node (3 RGB / 4 RGBW)
+// One LED node from the parsed xLights layout: the absolute channel of its
+// (RGB) pixel plus a normalized world position (0..1 within the display) and
+// distance from centre, and a bitmask of the model-groups it belongs to.
+// Written by uploadlayout.php, read here for per-LED spatial reactions.
+struct LayoutNode {
+    long ch;          // absolute 1-based start channel of this LED
     float nx, ny, nz, dist;
+    unsigned long mask;
 };
 const char* const kLayoutPath = "/home/fpp/media/config/pixelpulse_layout.txt";
 
@@ -126,7 +127,7 @@ public:
         // Phase 4: layout-aware spatial reactions. When a parsed xLights layout
         // is loaded, the effect is driven by each prop's real-world position, so
         // it renders the whole display (and takes over from the range pipeline).
-        if (mSpatialEnabled && !mLayout.empty()) {
+        if (mSpatialEnabled && !mNodes.empty()) {
             auto now = std::chrono::steady_clock::now();
             float dt = std::chrono::duration<float>(now - mLastFrame).count();
             mLastFrame = now;
@@ -269,9 +270,9 @@ private:
             if (beatTrig) { mRingOn = true; mRingPhase = 0.f; }
             if (mRingOn) { mRingPhase += dt / 0.6f; if (mRingPhase > 1.5f) mRingOn = false; }
         }
-        if (mode == 10) {  // fireworks: spawn a burst at a random prop on each beat
-            if (beatTrig && !mLayout.empty()) {
-                const LayoutProp& q = mLayout[std::rand() % (int)mLayout.size()];
+        if (mode == 10) {  // fireworks: spawn a burst at a random LED on each beat
+            if (beatTrig && !mNodes.empty()) {
+                const LayoutNode& q = mNodes[std::rand() % (int)mNodes.size()];
                 for (auto& b : mBursts) if (!b.on) { b.on = true; b.age = 0.f; b.x = q.nx; b.y = q.ny; break; }
             }
             for (auto& b : mBursts) if (b.on) { b.age += dt; if (b.age > 1.2f) b.on = false; }
@@ -284,12 +285,16 @@ private:
         for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
         const float chase = std::fmod(mChasePhase, 1.f);
 
-        for (const LayoutProp& p : mLayout) {
-            long s = p.start - 1;
-            if (s < 0 || s >= cap) continue;
-            long c = p.count;
-            if (s + c > cap) c = cap - s;
-            if (c < 3) continue;
+        // optional model-group filter (only light LEDs in the chosen group)
+        unsigned long selMask = 0; bool filter = false;
+        if (!mSpatialGroup.empty() && mSpatialGroup != "(all)")
+            for (size_t gi = 0; gi < mGroupNames.size(); ++gi)
+                if (mGroupNames[gi] == mSpatialGroup) { selMask = (1UL << gi); filter = true; break; }
+
+        for (const LayoutNode& p : mNodes) {
+            if (filter && !(p.mask & selMask)) continue;
+            long s = p.ch - 1;
+            if (s < 0 || s + 2 >= cap) continue;
 
             float br = 0.f; double hue = 0.0, sat = 1.0;
             switch (mode) {
@@ -330,31 +335,42 @@ private:
 
             uint8_t R, G, B;
             hsv2rgb(hue, sat, br, R, G, B);
-            for (long i = 0; i + 2 < c; i += p.step) { d[s + i] = R; d[s + i + 1] = G; d[s + i + 2] = B; }
+            d[s] = R; d[s + 1] = G; d[s + 2] = B;
         }
     }
 
-    // Load the parsed layout if the file changed (uploaded). Cheap flat format
-    // so we avoid pulling a JSON/XML dependency into the .so.
+    // Load the parsed per-LED layout if the file changed (uploaded). Cheap flat
+    // format so we avoid pulling a JSON/XML dependency into the .so. v3 only
+    // (per-LED nodes + groups); older per-prop files are ignored (re-upload).
     void loadLayoutIfChanged() {
         struct stat stt;
-        if (stat(kLayoutPath, &stt) != 0) { mLayout.clear(); mLayoutMtime = 0; return; }
-        if (stt.st_mtime == mLayoutMtime && !mLayout.empty()) return;
+        if (stat(kLayoutPath, &stt) != 0) { mNodes.clear(); mGroupNames.clear(); mLayoutMtime = 0; return; }
+        if (stt.st_mtime == mLayoutMtime && !mNodes.empty()) return;
         mLayoutMtime = stt.st_mtime;
         std::ifstream in(kLayoutPath);
         if (!in.good()) return;
-        std::string magic; int ver = 0, n = 0;
-        in >> magic >> ver >> n;
-        if (magic != "PIXELPULSE_LAYOUT" || n <= 0 || n > 500000) { mLayout.clear(); return; }
-        if (ver >= 2) { float ar = 1.f; in >> ar; }  // aspect ratio header token (preview only)
-        std::vector<LayoutProp> tmp; tmp.reserve(n);
-        for (int i = 0; i < n; ++i) {
-            LayoutProp p;
-            if (!(in >> p.start >> p.count >> p.step >> p.nx >> p.ny >> p.nz >> p.dist)) break;
-            if (p.step < 1) p.step = 3;
-            tmp.push_back(p);
+        std::string line;
+        if (!std::getline(in, line)) return;
+        std::istringstream hs(line);
+        std::string magic; int ver = 0, n = 0, ng = 0; float ar = 1.f;
+        hs >> magic >> ver >> n;
+        if (magic != "PIXELPULSE_LAYOUT" || ver < 3 || n <= 0 || n > 2000000) { mNodes.clear(); mGroupNames.clear(); return; }
+        hs >> ar >> ng;
+        std::vector<std::string> gnames;
+        if (std::getline(in, line) && line.rfind("GROUPS", 0) == 0) {
+            std::string rest = line.size() > 7 ? line.substr(7) : "";
+            size_t p = 0, q;
+            while (p <= rest.size()) { q = rest.find('|', p); std::string nm = rest.substr(p, q == std::string::npos ? std::string::npos : q - p);
+                if (!nm.empty()) gnames.push_back(nm); if (q == std::string::npos) break; p = q + 1; }
         }
-        mLayout.swap(tmp);
+        std::vector<LayoutNode> tmp; tmp.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            LayoutNode nd;
+            if (!(in >> nd.ch >> nd.nx >> nd.ny >> nd.nz >> nd.dist >> nd.mask)) break;
+            tmp.push_back(nd);
+        }
+        mNodes.swap(tmp);
+        mGroupNames.swap(gnames);
     }
 
     bool range(long& startIdx, long& bytes) const {
@@ -465,6 +481,7 @@ private:
         mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : 0;
         mCycleSecs = std::max(3L, toLong(cfg("spatial_cyclesecs"), 20));
         mAutoLevel = toLong(cfg("auto_level"), 1) != 0;
+        mSpatialGroup = cfg("spatial_group");
     }
 
     AudioAnalyzer mAnalyzer;
@@ -492,7 +509,9 @@ private:
     float mSpeedMult = 1.0f;
 
     // Phase 4: spatial / layout-aware reactions
-    std::vector<LayoutProp> mLayout;
+    std::vector<LayoutNode> mNodes;
+    std::vector<std::string> mGroupNames;
+    std::string mSpatialGroup;
     time_t mLayoutMtime = 0;
     bool mSpatialEnabled = false;
     int mSpatialMode = 1;          // 1..14 (see kSpatialModes)

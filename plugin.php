@@ -140,7 +140,8 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">14 styles, driven by physical prop position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">14 styles, driven by physical LED position</span></div>
+      <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
       <div class="lab">Auto design change</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_autocycle',this.value,0,0);"><?php foreach (array('off','time','beats') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">rotate modes automatically</span></div>
       <div class="lab">Change every</div><div><?php echo afNum('spatial_cyclesecs', '20', '3', '300', '1', 's'); ?></div>
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
@@ -155,7 +156,7 @@ function afApi(p){ return 'plugin.php?plugin=pixelpulse&page=' + p + '&nopage=1'
 // spatial layout upload + status
 function afLayoutStatus(s){
   var el=document.getElementById('af-layout-status'); if(!el) return;
-  if(s && s.count>0){ el.textContent='layout loaded: '+s.count+' props'; el.style.color='#2f9e6f'; }
+  if(s && s.count>0){ el.textContent='layout loaded: '+s.count+' LEDs'+(s.groups&&s.groups.length?(' · '+s.groups.length+' groups'):''); el.style.color='#2f9e6f'; }
   else { el.textContent='no layout uploaded — choose your xlights_rgbeffects.xml'; el.style.color='#6b7280'; }
 }
 function afRefreshLayout(){ fetch(afApi('uploadlayout.php')).then(function(r){return r.json();}).then(afLayoutStatus).catch(function(){}); }
@@ -190,7 +191,7 @@ function afCalibrate(btn){
   },100);
 }
 // live spatial preview: the layout lit by the on-device audio, current mode
-var afPts=null, afCanvas=document.getElementById('af-preview');
+var afPts=null, afGroups=[], afCanvas=document.getElementById('af-preview');
 function afHsv(h,s,v){ h=((h%360)+360)%360; var c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,r=0,g=0,b=0;
   if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}
   return 'rgb('+Math.round((r+m)*255)+','+Math.round((g+m)*255)+','+Math.round((b+m)*255)+')'; }
@@ -208,8 +209,10 @@ function afPrevLoop(){
   document.getElementById('af-prevmode').textContent=mode;
   var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
   var pad=8, sw=W-2*pad, sh=H-2*pad;
-  ctx.fillStyle='rgba(150,162,178,0.28)';                 // base layer: the layout shape, always visible
-  for(var j=0;j<afPts.length;j++){ ctx.beginPath(); ctx.arc(pad+afPts[j][0]*sw, pad+(1-afPts[j][1])*sh, 1.2, 0, 6.283); ctx.fill(); }
+  ctx.fillStyle='rgba(150,162,178,0.26)';                 // base layer: the whole layout shape, always visible
+  for(var j=0;j<afPts.length;j++){ ctx.beginPath(); ctx.arc(pad+afPts[j][0]*sw, pad+(1-afPts[j][1])*sh, 1.1, 0, 6.283); ctx.fill(); }
+  var gsel=document.getElementById('af-spatialgroup'), gval=gsel?gsel.value:'(all)';
+  var gidx=afGroups.indexOf(gval), gfilter=(gval!=='(all)'&&gidx>=0), gbit=gidx>=0?(1<<gidx):0;
   var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;} if(beat<0.2)afSt.latch=false;
   afSt.chase+=dt*(0.12+0.5*lvl); afSt.wave+=dt*0.6;
   if(mode==='bloom'){ if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;} }
@@ -219,6 +222,7 @@ function afPrevLoop(){
   var chase=afSt.chase%1;
   for(var i=0;i<afPts.length;i++){
     var p=afPts[i], nx=p[0], ny=p[1], dist=p[2], br=0, hue=0, sat=1, bi, dd, tw, wv;
+    if(gfilter && !((p[3]||0)&gbit)) continue;   // only the selected group lights up
     switch(mode){
       case 'bloom': if(afSt.ring) br=Math.exp(-Math.pow((dist-afSt.ringPh)/0.16,2)); br*=(0.45+0.55*lvl); hue=210-170*bass; break;
       case 'spectrum': bi=Math.min(nb-1,Math.floor(nx*nb)); br=bands[bi]||0; hue=280*nx; break;
@@ -242,7 +246,10 @@ function afPrevLoop(){
   ctx.globalAlpha=1;
 }
 fetch(afApi('uploadlayout.php')+'&points=1').then(function(r){return r.json();}).then(function(d){
-  if(d&&d.count>0&&d.pts){ afPts=d.pts;
+  if(d&&d.count>0&&d.pts){ afPts=d.pts; afGroups=d.groups||[];
+    var gsel=document.getElementById('af-spatialgroup');
+    if(gsel){ var cur=gsel.value; gsel.innerHTML='';
+      ['(all)'].concat(afGroups).forEach(function(g){ var o=document.createElement('option'); o.value=g; o.textContent=g; if(g===cur)o.selected=true; gsel.appendChild(o); }); }
     document.getElementById('af-prevwrap').style.display='block';
     var ar=(d.ar&&d.ar>0)?d.ar:0.6;                      // real width/height, frame the true shape
     var maxH=320, maxW=(afCanvas.parentNode.clientWidth||580)-2;
