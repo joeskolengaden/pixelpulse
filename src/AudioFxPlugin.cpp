@@ -582,7 +582,18 @@ private:
                 G = (uint8_t)((int)G2 + (int)(((int)G - (int)G2) * tt));
                 B = (uint8_t)((int)B2 + (int)(((int)B - (int)B2) * tt));
             }
-            d[s] = R; d[s + 1] = G; d[s + 2] = B;
+            // how the effect combines with the playing sequence on this LED
+            switch (mBlend) {
+            case 1:  // overlay - keep whichever is brighter (effect floats over the show)
+                if (R > d[s]) d[s] = R; if (G > d[s + 1]) d[s + 1] = G; if (B > d[s + 2]) d[s + 2] = B; break;
+            case 2:  // add - brighten the show by the effect
+                d[s] = clamp8(d[s] + R); d[s + 1] = clamp8(d[s + 1] + G); d[s + 2] = clamp8(d[s + 2] + B); break;
+            case 3: {  // modulate - the effect's brightness pulses the show's own colours
+                int lum = (R * 54 + G * 183 + B * 19) >> 8;
+                d[s] = d[s] * lum / 255; d[s + 1] = d[s + 1] * lum / 255; d[s + 2] = d[s + 2] * lum / 255; } break;
+            default:  // replace - the effect overrides the show (default)
+                d[s] = R; d[s + 1] = G; d[s + 2] = B; break;
+            }
         }
     }
 
@@ -823,6 +834,8 @@ private:
         mSpatialEnabled = toLong(cfg("spatial_enabled"), 0) != 0;
         mSpatialMode = spatialModeIndex(cfg("spatial_mode"));
         mSpatialIntensity = std::min(200L, std::max(0L, toLong(cfg("spatial_intensity"), 100)));
+        std::string bl = cfg("spatial_blend");
+        mBlend = (bl == "over") ? 1 : (bl == "add") ? 2 : (bl == "modulate") ? 3 : 0;
         mPalette = paletteIndex(cfg("palette"));
         std::string ac = cfg("spatial_autocycle");
         mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : (ac == "smart") ? 3 : 0;
@@ -865,7 +878,8 @@ private:
     std::string mSpatialGroup;
     time_t mLayoutMtime = 0;
     bool mSpatialEnabled = false;
-    int mSpatialMode = 1;          // 1..14 (see kSpatialModes)
+    int mSpatialMode = 1;          // 1..35 (see kSpatialModes)
+    int mBlend = 0;                // 0 replace(override), 1 overlay, 2 add, 3 modulate
     int mEffectiveMode = 1;        // the mode actually rendering (auto-cycle may override)
     long mSpatialIntensity = 100;
     int mAutoCycle = 0;            // 0 off, 1 time, 2 beats
