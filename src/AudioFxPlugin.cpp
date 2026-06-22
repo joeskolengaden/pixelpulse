@@ -669,18 +669,30 @@ private:
         fclose(f);
         return c == '1' ? 1 : (c == '0' ? 0 : -1);
     }
-    // Read a GPIO line via libgpiod's gpioget, applying a pull bias (the only
-    // way to set the internal pull resistor). Returns 0/1 or -1 if unavailable.
+    int runGpioGet(const char* cmd) {
+        FILE* f = popen(cmd, "r");
+        if (!f) return -1;
+        char buf[24] = {0};
+        bool got = fgets(buf, sizeof(buf), f) != nullptr;
+        pclose(f);
+        if (!got) return -1;
+        for (char* p = buf; *p; ++p) { if (*p == '0') return 0; if (*p == '1') return 1; }
+        return -1;
+    }
+    // Read a GPIO line via libgpiod's gpioget, applying a pull bias (the only way
+    // to set the internal pull resistor). Tries the libgpiod v1 syntax then v2
+    // (newer FPP). Returns 0/1, or -1 if unavailable.
     int gpiogetRead(int chip, int line, int pull) {
         if (chip < 0 || line < 0) return -1;
         const char* bias = pull == 1 ? "pull-up" : (pull == 2 ? "pull-down" : "disable");
-        char cmd[160];
+        char cmd[200];
         snprintf(cmd, sizeof(cmd), "gpioget --bias=%s gpiochip%d %d 2>/dev/null", bias, chip, line);
-        FILE* f = popen(cmd, "r");
-        if (!f) return -1;
-        int c = fgetc(f);
-        pclose(f);
-        return c == '1' ? 1 : (c == '0' ? 0 : -1);
+        int v = runGpioGet(cmd);
+        if (v < 0) {
+            snprintf(cmd, sizeof(cmd), "gpioget --numeric --bias=%s -c gpiochip%d %d 2>/dev/null", bias, chip, line);
+            v = runGpioGet(cmd);
+        }
+        return v;
     }
     // A configured physical switch gates the plugin. Prefer gpioget (so the pull
     // bias applies); fall back to sysfs by GPIO number. Unconfigured/unreadable
