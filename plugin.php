@@ -6,7 +6,7 @@ if (!isset($pluginSettings) || !is_array($pluginSettings)) $pluginSettings = arr
 function af_get($k, $d = '') { global $pluginSettings; return isset($pluginSettings[$k]) ? $pluginSettings[$k] : $d; }
 function af_chk($k, $d = '0') { return af_get($k, $d) == '1' ? ' checked' : ''; }
 function af_js($k, $b = false) { $v = $b ? 'this.checked?1:0' : 'this.value'; $e = $b ? ' afxToggle(this);' : ''; return "SetPluginSetting('pixelpulse','$k',$v,0,0);$e"; }
-function afNum($k, $d, $mn, $mx, $st, $u = '') { return "<div class=\"sl\"><input type=\"range\" min=\"$mn\" max=\"$mx\" step=\"$st\" value=\"" . htmlspecialchars(af_get($k, $d)) . "\" oninput=\"this.nextElementSibling.textContent=this.value+'$u';\" onChange=\"" . af_js($k) . "\"><span>" . htmlspecialchars(af_get($k, $d)) . "$u</span></div>"; }
+function afNum($k, $d, $mn, $mx, $st, $u = '') { return "<div class=\"sl\"><input type=\"range\" id=\"afn-$k\" min=\"$mn\" max=\"$mx\" step=\"$st\" value=\"" . htmlspecialchars(af_get($k, $d)) . "\" oninput=\"this.nextElementSibling.textContent=this.value+'$u';\" onChange=\"" . af_js($k) . "\"><span id=\"afnv-$k\" data-u=\"$u\">" . htmlspecialchars(af_get($k, $d)) . "$u</span></div>"; }
 function afInt($k, $d, $mn = '', $mx = '') { $a = ($mn !== '' ? " min=\"$mn\"" : '') . ($mx !== '' ? " max=\"$mx\"" : ''); return "<input type=\"number\"$a value=\"" . htmlspecialchars(af_get($k, $d)) . "\" onChange=\"" . af_js($k) . "\">"; }
 function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbox\"" . af_chk($k, $d) . " onChange=\"" . af_js($k, true) . "\"><span class=\"sl2\"></span></label>"; }
 ?>
@@ -77,6 +77,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Input gain</div><div><?php echo afNum('gain', '1.0', '0.1', '10', '0.1'); ?></div>
       <div class="lab">Noise gate</div><div><?php echo afNum('gate', '0.02', '0', '0.3', '0.005'); ?></div>
       <div class="lab">Beat sensitivity</div><div><?php echo afNum('sensitivity', '1.5', '1.05', '3', '0.05'); ?></div>
+      <div class="lab">Auto-calibrate</div><div><button type="button" id="af-calib" onclick="afCalibrate(this)" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Calibrate (listen 5s)</button> <span class="help">play typical audio, then it sets gain &amp; noise gate</span></div>
     </div></div>
   </div>
 
@@ -165,6 +166,26 @@ function afUpload(){
   }).catch(function(){ el.textContent='upload failed'; el.style.color='#e24b4a'; });
 }
 afRefreshLayout();
+// one-click auto-calibrate: listen ~5s, set noise gate from the floor and gain from the peaks
+function afSetSlider(k,v){ var i=document.getElementById('afn-'+k); if(i) i.value=v; var sp=document.getElementById('afnv-'+k); if(sp) sp.textContent=v+(sp.getAttribute('data-u')||''); }
+function afPctl(arr,p){ if(!arr.length) return 0; var a=arr.slice().sort(function(x,y){return x-y;}); return a[Math.min(a.length-1,Math.floor(p*a.length))]; }
+function afCalibrate(btn){
+  var samples=[], n=0, total=50, orig=btn.textContent; btn.disabled=true;
+  var iv=setInterval(function(){
+    var s=window.afLast; if(s&&typeof s.rawLevel==='number') samples.push(s.rawLevel);
+    n++; btn.textContent='listening… '+Math.max(0,Math.ceil((total-n)/10))+'s';
+    if(n<total) return;
+    clearInterval(iv); btn.disabled=false; btn.textContent=orig;
+    var act=samples.filter(function(v){return v>0;});
+    if(act.length<5){ alert('No audio captured — make sure the device is open and play some sound, then calibrate.'); return; }
+    var floor=afPctl(samples,0.25), peak=afPctl(samples,0.95);
+    var gate=Math.min(0.2,Math.max(0.005, floor*1.8+0.003)); gate=Math.round(gate/0.005)*0.005; gate=Math.round(gate*1000)/1000;
+    var gain=Math.min(10,Math.max(0.3, 0.35/Math.max(0.01,peak))); gain=Math.round(gain*10)/10;
+    SetPluginSetting('pixelpulse','gate',gate,0,0); afSetSlider('gate',gate);
+    SetPluginSetting('pixelpulse','gain',gain,0,0); afSetSlider('gain',gain);
+    alert('Calibrated from '+act.length+' samples:\n  gain = '+gain+'\n  noise gate = '+gate);
+  },100);
+}
 // live spatial preview: the layout lit by the on-device audio, current mode
 var afPts=null, afCanvas=document.getElementById('af-preview');
 function afHsv(h,s,v){ h=((h%360)+360)%360; var c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,r=0,g=0,b=0;

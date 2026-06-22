@@ -47,6 +47,7 @@ public:
     float beat() const { return mBeat.load(std::memory_order_relaxed); }
     float bpm() const { return mBpm.load(std::memory_order_relaxed); }
     bool active() const { return mActive.load(std::memory_order_relaxed); }
+    float rawLevel() const { return mRawLevel.load(std::memory_order_relaxed); }  // raw RMS, pre-gain/AGC (for calibration)
 
 private:
     void analyzeWindow();
@@ -73,7 +74,7 @@ private:
     double mTimeMs = 0.0, mLastBeatMs = -1000.0;
     double mLastInterval = 0.0;
 
-    std::atomic<float> mLevel{0}, mBass{0}, mMid{0}, mTreble{0}, mBeat{0}, mBpm{0};
+    std::atomic<float> mLevel{0}, mBass{0}, mMid{0}, mTreble{0}, mBeat{0}, mBpm{0}, mRawLevel{0};
     std::atomic<float> mBands[MAX_BANDS]{};
     std::atomic<bool> mActive{false};
 };

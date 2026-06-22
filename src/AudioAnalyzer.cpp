@@ -71,6 +71,7 @@ void AudioAnalyzer::analyzeWindow() {
         w[i] = mAccum[i] * mHann[i] * mGain;
     }
     float rms = (float)std::sqrt(sumSq / mFftSize);
+    mRawLevel.store(rms, std::memory_order_relaxed);  // pre-gain/AGC, for calibration
 
     kiss_fftr(mCfg, w.data(), mFreq.data());
     const int nb = mFftSize / 2 + 1;

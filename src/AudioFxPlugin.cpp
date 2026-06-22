@@ -347,10 +347,10 @@ private:
         if (!f) return;
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
-            "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"bands\":[",
+            "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
-            mAnalyzer.treble(), mAnalyzer.bpm());
+            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel());
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
             fprintf(f, "%s%.3f", b ? "," : "", mAnalyzer.band(b));
         fprintf(f, "]}");
