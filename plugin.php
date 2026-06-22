@@ -78,7 +78,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
     <div class="head"><span class="t">General</span><?php echo afTog('enabled'); ?></div>
     <div class="body"><div class="grid">
       <div class="lab">Run when</div><div><select onChange="SetPluginSetting('pixelpulse','run_when',this.value,0,0);"><?php $rw = af_get('run_when', af_get('onlyWhenPlaying','1')==='1'?'playing':'always'); foreach (array('playing'=>'a sequence is playing','idle'=>'no sequence is playing','always'=>'always (whenever FPP outputs)') as $v=>$lbl) echo "<option value='$v'" . ($rw===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">test patterns are never touched</span></div>
-      <div class="lab">Ambient mode</div><div><label class="sw"><input type="checkbox"<?php echo af_chk('ambient_mode'); ?> onChange="afAmbient(this)"><span class="sl2"></span></label> <span class="help">loop designs when no show is scheduled; audio reacts on top</span></div>
+      <div class="lab">Ambient mode</div><div><label class="sw"><input type="checkbox" id="af-ambient-cb"<?php echo af_chk('ambient_mode'); ?> onChange="afAmbient(this)"><span class="sl2"></span></label> <span class="help">loop designs when no show is scheduled; audio reacts on top</span></div>
       <div class="lab">Ambient playlist</div><div><select id="af-ambientpl" onChange="SetPluginSetting('pixelpulse','ambient_playlist',this.value,0,0);"><option value="">(blank — audio only)</option></select> <span class="help">your designs to loop; use a blend/brightness reaction so they stay visible</span></div>
     </div></div>
   </div>
@@ -455,7 +455,16 @@ setInterval(function(){
     var swd=document.getElementById('af-sw'), swt=document.getElementById('af-swtxt');
     if(swd){ if(s.switchEnabled){ swd.className='dot'+(s.switchOn?' on':' beat'); swt.textContent=s.switchOn?'switch ON':'switch OFF'; } else { swd.className='dot'; swt.textContent='not used'; } }
     var bars=afBands.children; (s.bands||[]).forEach(function(v,i){ if(bars[i]) bars[i].style.height=Math.max(2,Math.round(v*100))+'%'; });
-    document.getElementById('af-hint').textContent = s.deviceOk ? '' : 'Tip: set the device (e.g. hw:1,0) and check it appears in the dropdown. Run "arecord -l" on the device to find it.';
+    var hint = '';
+    if(!s.deviceOk) hint = 'Tip: set the device (e.g. hw:1,0) and check it appears in the dropdown. Run "arecord -l" on the device to find it.';
+    else if(window.afIdle){ var amb=document.getElementById('af-ambient-cb'); if(!amb||!amb.checked) hint = 'Idle — the designs (and auto design change) only run while a show is playing or Ambient mode is on. Start a show or turn on Ambient mode.'; }
+    document.getElementById('af-hint').textContent = hint;
   }).catch(function(){ document.getElementById('af-devtxt').textContent='(plugin not running — enable it and restart fppd)'; });
 }, 130);
+// FPP only calls the plugin while it's outputting; track idle state (throttled) for the hint above
+setInterval(function(){
+  fetch('api/fppd/status').then(function(r){return r.json();}).then(function(s){
+    window.afIdle = (s.status_name==='idle' || s.status===0);
+  }).catch(function(){});
+}, 2000);
 </script>
