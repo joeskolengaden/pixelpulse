@@ -812,8 +812,7 @@ private:
             effPaletteName(), mSwitchEnabled ? "true" : "false", mSwitchOn ? "true" : "false");
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
             fprintf(f, "%s%.3f", b ? "," : "", mAnalyzer.band(b));
-        fprintf(f, "],\"dbg_ac\":%d,\"dbg_sm\":%d,\"dbg_n\":%d,\"dbg_nodes\":%d,\"dbg_eff\":%d,\"dbg_en\":%d,\"dbg_sw\":%d,\"dbg_spen\":%d}",
-                mAutoCycle, mSpatialMode, (int)settings.size(), (int)mNodes.size(), mEffectiveMode, mEnabled ? 1 : 0, mSwitchOn ? 1 : 0, mSpatialEnabled ? 1 : 0);
+        fprintf(f, "]}");
         fclose(f);
     }
 
