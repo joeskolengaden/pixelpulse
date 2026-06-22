@@ -350,7 +350,7 @@ private:
         if (mDetectedCat != mSmartCategory) { mSmartCategory = mDetectedCat; mSmartPalette = kCatPalette[mDetectedCat]; repick = true; }
         if (mSongChanged) { mSongChanged = false; mSmartPoolIdx++; repick = true; }
         mSmartTimer += dt;
-        if (mSmartTimer >= 16.f) { mSmartPoolIdx++; repick = true; }
+        if (mSmartTimer >= (float)mCycleSecs) { mSmartPoolIdx++; repick = true; }  // honour the interval (was hardcoded 16s)
         if (repick || mSmartMode == 0) {
             mSmartTimer = 0.f;
             mSmartMode = kSmartPools[mSmartCategory][mSmartPoolIdx % kSmartPoolLen];
