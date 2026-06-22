@@ -25,6 +25,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <sys/stat.h>
@@ -177,12 +178,22 @@ public:
         mNoiseLearnSeen = cfg("noise_learn");  // consume any persisted value (don't auto-learn at boot)
         mAnalyzer.configure(mSampleRate, 1024, 8);
         restartCapture();
+        // Write the live status from a background thread (~8x/sec) so the
+        // settings-page Live monitor works even when nothing is playing - FPP
+        // doesn't call modifyChannelData when idle, but capture/analysis run.
+        mStatusRun.store(true);
+        mStatusThread = std::thread([this] {
+            while (mStatusRun.load()) { writeStatus(); std::this_thread::sleep_for(std::chrono::milliseconds(120)); }
+        });
     }
-    ~AudioFxPlugin() override { mCapture.stop(); }
+    ~AudioFxPlugin() override {
+        mStatusRun.store(false);
+        if (mStatusThread.joinable()) mStatusThread.join();
+        mCapture.stop();
+    }
 
     void modifyChannelData(int /*ms*/, uint8_t* d) override {
         maybeReload();
-        writeStatus();
         if (!mEnabled || !mSwitchOn || d == nullptr) return;
         if (creditsBlocked()) return;   // out of credits -> leave the buffer dark
         if (!shouldModify()) return;
@@ -740,9 +751,8 @@ private:
         return ep >= 0 ? kPalettes[ep].name : "auto";
     }
     void writeStatus() {
-        auto now = std::chrono::steady_clock::now();
-        if (now - mLastStatus < std::chrono::milliseconds(120)) return;
-        mLastStatus = now;
+        // Called from the background status thread (~8x/sec) so the Live monitor
+        // updates even when idle. Reads only thread-safe atomics + plain ints.
         // /dev/shm (RAM, no SD wear) is shared across mount namespaces, so the
         // web server (Apache runs with systemd PrivateTmp, a private /tmp) can
         // read what fppd writes. /tmp would be invisible to the settings page.
@@ -850,6 +860,8 @@ private:
 
     AudioAnalyzer mAnalyzer;
     AlsaCapture mCapture;
+    std::thread mStatusThread;
+    std::atomic<bool> mStatusRun{false};
     std::chrono::steady_clock::time_point mLastReload, mLastStatus, mLastFrameWrite;
 
     bool mEnabled = false;
