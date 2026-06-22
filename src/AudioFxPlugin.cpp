@@ -183,7 +183,7 @@ public:
         // doesn't call modifyChannelData when idle, but capture/analysis run.
         mStatusRun.store(true);
         mStatusThread = std::thread([this] {
-            while (mStatusRun.load()) { writeStatus(); std::this_thread::sleep_for(std::chrono::milliseconds(120)); }
+            while (mStatusRun.load()) { writeStatus(); ambientTick(); std::this_thread::sleep_for(std::chrono::milliseconds(120)); }
         });
     }
     ~AudioFxPlugin() override {
@@ -746,6 +746,31 @@ private:
         mCapture.setChannelMode(mChMode);
         mCapture.start(mDevice, mSampleRate, &mAnalyzer);
     }
+    // Ambient mode: when enabled and nothing is playing, (re)start the looping
+    // blank playlist so FPP runs its output loop and the audio designs light the
+    // display with no real show. Reads the flags straight from the persistent
+    // config (the settings map isn't refreshed while idle). Runs on the status
+    // thread; the curl is backgrounded so it never blocks status writes.
+    void ambientTick() {
+        auto now = std::chrono::steady_clock::now();
+        if (now - mLastAmbientCheck < std::chrono::seconds(2)) return;
+        mLastAmbientCheck = now;
+        bool ambient = false, enabled = false;
+        std::ifstream cf("/home/fpp/media/config/plugin.pixelpulse");
+        std::string line;
+        while (std::getline(cf, line)) {
+            if (line.rfind("ambient_mode", 0) == 0) ambient = line.find("\"1\"") != std::string::npos;
+            else if (line.rfind("enabled ", 0) == 0) enabled = line.find("\"1\"") != std::string::npos;
+        }
+        if (!ambient || !enabled) return;
+        if (ChannelTester::INSTANCE.Testing()) return;
+        if (sequence != nullptr && sequence->IsSequenceRunning()) return;  // a show is already playing
+        if (now - mLastAmbientStart < std::chrono::seconds(3)) return;
+        mLastAmbientStart = now;
+        std::system("curl -s -m 3 -X POST -H 'Content-Type: application/json' "
+                    "--data '{\"command\":\"Start Playlist\",\"args\":[\"pixelpulse_ambient\",\"true\",\"true\"]}' "
+                    "http://127.0.0.1/api/command >/dev/null 2>&1 &");
+    }
     const char* effPaletteName() const {
         int ep = (mPalette >= 0) ? mPalette : (mAutoCycle == 3 ? mSmartPalette : -1);
         return ep >= 0 ? kPalettes[ep].name : "auto";
@@ -862,7 +887,7 @@ private:
     AlsaCapture mCapture;
     std::thread mStatusThread;
     std::atomic<bool> mStatusRun{false};
-    std::chrono::steady_clock::time_point mLastReload, mLastStatus, mLastFrameWrite;
+    std::chrono::steady_clock::time_point mLastReload, mLastStatus, mLastFrameWrite, mLastAmbientCheck, mLastAmbientStart;
 
     bool mEnabled = false;
     int mRunWhen = 0;  // 0 only while playing, 1 only while not playing, 2 always

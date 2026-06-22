@@ -78,7 +78,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
     <div class="head"><span class="t">General</span><?php echo afTog('enabled'); ?></div>
     <div class="body"><div class="grid">
       <div class="lab">Run when</div><div><select onChange="SetPluginSetting('pixelpulse','run_when',this.value,0,0);"><?php $rw = af_get('run_when', af_get('onlyWhenPlaying','1')==='1'?'playing':'always'); foreach (array('playing'=>'a sequence is playing','idle'=>'no sequence is playing','always'=>'always (whenever FPP outputs)') as $v=>$lbl) echo "<option value='$v'" . ($rw===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">test patterns are never touched</span></div>
-      <div class="lab"></div><div class="help" style="font-size:12px">FPP doesn't run the plugin when fully idle — for audio reactivity with no show, loop a blank sequence.</div>
+      <div class="lab">Ambient mode</div><div><label class="sw"><input type="checkbox"<?php echo af_chk('ambient_mode'); ?> onChange="afAmbient(this)"><span class="sl2"></span></label> <span class="help">audio-reactive with no show — loops a blank sequence</span></div>
     </div></div>
   </div>
 
@@ -185,6 +185,20 @@ function afGpioPick(sel){ var o=sel.options[sel.selectedIndex]; if(!o||!o.value)
   SetPluginSetting('pixelpulse','switch_gpio',pp[0],0,0);
   SetPluginSetting('pixelpulse','switch_chip',pp[1],0,0);
   SetPluginSetting('pixelpulse','switch_line',pp[2],0,0); }
+// ambient mode: create the blank sequence/playlist on enable; the plugin keeps it looping when idle
+function afAmbient(cb){
+  SetPluginSetting('pixelpulse','ambient_mode',cb.checked?1:0,0,0);
+  if(cb.checked){
+    fetch(afApi('ambient.php')+'&setup=1').then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok) alert('Ambient setup failed (could not write the blank sequence/playlist).');
+    }).catch(function(){});
+  } else {
+    fetch('api/fppd/status').then(function(r){return r.json();}).then(function(s){   // stop only OUR playlist
+      var pl=s.current_playlist, name=(pl&&pl.playlist)||pl||'';
+      if(name==='pixelpulse_ambient') fetch('api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'Stop Now'})});
+    }).catch(function(){});
+  }
+}
 fetch('api/gpio').then(function(r){return r.json();}).then(function(list){
   var sel=document.getElementById('af-gpiopin'); if(!sel) return;
   var cur='<?php echo htmlspecialchars(af_get("switch_gpio","-1")); ?>';
