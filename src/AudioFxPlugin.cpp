@@ -293,9 +293,66 @@ private:
         return mSmartMode;
     }
 
-    // Phase 4: drive each prop by its physical position in the display. 22 modes
-    // (live takes on xLights VU-Meter styles + extras), optionally auto-cycled
-    // or smart-selected from the live music profile.
+    // Render one LED for a given design, using the per-frame context (mCtx*) and
+    // effect state. Separated out so two designs can be blended during a
+    // crossfade transition.
+    void nodeColor(int mode, const LayoutNode& p, uint8_t& R, uint8_t& G, uint8_t& B) {
+        const int nb = mCtxNb;
+        const float level = mCtxLevel, beat = mCtxBeat, bass = mCtxBass, treble = mCtxTreble;
+        float br = 0.f; double hue = 0.0, sat = 1.0;
+        switch (mode) {
+        case 1: if (mRingOn) br = std::exp(-std::pow((p.dist - mRingPhase) / 0.16f, 2.f));
+            br *= (0.45f + 0.55f * level); hue = 210.0 - 170.0 * bass; break;
+        case 2: { int bi = (int)(p.nx * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
+            br = mAnalyzer.band(bi); hue = 280.0 * p.nx; } break;
+        case 3: br = (p.ny <= level) ? (0.4f + 0.6f * (1.f - (level - p.ny))) : 0.f; hue = 120.0 * (1.0 - p.ny); break;
+        case 4: { int bi = (int)(p.dist * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
+            br = mAnalyzer.band(bi); hue = 200.0 + 100.0 * p.dist; } break;
+        case 5: br = 0.1f + 0.9f * level; hue = 210.0 - 170.0 * bass + 90.0 * treble; break;
+        case 6: br = beat; hue = 40.0 + 200.0 * bass; break;
+        case 7: { float dd = std::fabs(p.nx - mCtxChase); dd = std::min(dd, 1.f - dd);
+            br = std::exp(-std::pow(dd / 0.10f, 2.f)) * (0.4f + 0.6f * level); hue = 200.0 + 120.0 * p.nx; } break;
+        case 8: { float tw = std::sin(mWavePhase * 6.0f + p.nx * 53.0f + p.ny * 97.0f);
+            br = (tw > (1.f - 0.5f * level - (mCtxBeatTrig ? 0.4f : 0.f))) ? 1.f : 0.f; hue = 180.0 + 120.0 * p.ny; } break;
+        case 9: { float w = 0.5f + 0.5f * std::sin((p.nx + p.ny) * 9.42f - mWavePhase * 6.2832f);
+            br = w * (0.25f + 0.75f * level); hue = 260.0 * w; } break;
+        case 10: { for (const auto& b : mBursts) if (b.on) { float rd = std::hypot(p.nx - b.x, p.ny - b.y);
+            br += std::exp(-std::pow((rd - b.age * 0.9f) / 0.08f, 2.f)) * (1.f - b.age / 1.2f); }
+            br = std::min(1.f, br) * (0.5f + 0.5f * level); hue = 30.0 + 300.0 * bass; } break;
+        case 11: { for (float rf : mRainFront) if (rf >= 0.f) br += std::exp(-std::pow((p.ny - rf) / 0.10f, 2.f));
+            br = std::min(1.f, br); hue = 200.0; } break;
+        case 12: br = (beat > 0.5f) ? 1.f : 0.f; sat = 0.0; break;
+        case 13: br = 0.15f + 0.85f * level; hue = 280.0 * mCtxDom / std::max(1, nb - 1); break;
+        case 14: br = (p.dist <= level * 1.15f) ? (0.5f + 0.5f * level) : 0.f; hue = 140.0 - 120.0 * p.dist; break;
+        case 15: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) * 57.2958f;
+            br = 0.2f + 0.8f * level; hue = ang + mSpinPhase * 360.0f + 180.0 * p.dist; } break;
+        case 16: { int col = (int)(p.nx * nb); col = col < 0 ? 0 : (col >= nb ? nb - 1 : col);
+            float h = mAnalyzer.band(col); br = (p.ny <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * p.nx; } break;
+        case 17: { float v = 0.5f + 0.5f * std::sin((p.dist * 5.0f - mRipplePhase) * 6.2832f);
+            br = std::pow(v, 3.f) * (0.3f + 0.7f * level); hue = 190.0 + 130.0 * p.dist; } break;
+        case 18: { float flick = 0.55f + 0.45f * std::sin(mWavePhase * 8.f + p.nx * 40.f + p.ny * 25.f);
+            float base = (1.f - p.ny); base *= base;
+            br = base * (0.35f + 0.65f * bass) * flick * (0.5f + 0.5f * level); hue = 50.0 * std::min(1.f, br * 1.3f); } break;
+        case 19: { float delta = mCometPhase - p.nx; if (delta < 0.f) delta += 1.f;
+            br = (delta < 0.35f) ? (1.f - delta / 0.35f) * (0.4f + 0.6f * level) : 0.f; hue = 190.0 + 90.0 * delta; } break;
+        case 20: { float v = std::sin(p.nx * 6.f + mWavePhase * 3.f) + std::sin(p.ny * 6.f + mWavePhase * 2.f)
+                       + std::sin((p.nx + p.ny) * 5.f + mWavePhase); v = (v / 3.f + 1.f) * 0.5f;
+            br = (0.3f + 0.7f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
+        case 21: { float scan = 0.5f + 0.5f * std::sin(mScanPhase * 6.2832f); float dd = std::fabs(p.ny - scan);
+            br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0 + 30.0 * scan; } break;
+        default: { float h1 = std::fmod(std::sin(p.ch * 12.9898f) * 43758.5453f, 1.f); if (h1 < 0) h1 += 1.f;
+            br = (h1 < 0.15f + 0.35f * beat) ? beat : 0.f;
+            float h2 = std::fmod(std::sin(p.ch * 78.233f) * 43758.5453f, 1.f); if (h2 < 0) h2 += 1.f;
+            hue = 360.0 * h2; } break;
+        }
+        br *= mSpatialIntensity / 100.f;
+        if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
+        hsv2rgb(hue, sat, br, R, G, B);
+    }
+
+    // Phase 4: drive each LED by its physical position. 22 designs, optionally
+    // auto-cycled or smart-selected, with smooth beat-aligned crossfades between
+    // designs (so changes feel dynamic to the music, not a hard cut).
     void applySpatial(uint8_t* d, float dt) {
         const long cap = (long)FPPD_MAX_CHANNELS;
         const int nb = mAnalyzer.numBands();
@@ -303,7 +360,6 @@ private:
         const float beat = mAnalyzer.beat();
         const float bass = mAnalyzer.bass();
         const float treble = mAnalyzer.treble();
-        const float gainI = mSpatialIntensity / 100.f;
 
         bool beatTrig = false;  // rising edge of a beat
         if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; beatTrig = true; }
@@ -311,19 +367,30 @@ private:
 
         updateProfile(dt);  // keep the live music profile current
 
-        // auto design change: timer / every 16 beats / smart (music-aware)
-        int mode = mSpatialMode;
+        // target design: manual / timer / every 16 beats / smart (music-aware)
+        int target = mSpatialMode;
         if (mAutoCycle == 1) {
             mCycleTimer += dt;
             if (mCycleTimer >= (float)mCycleSecs) { mCycleTimer = 0.f; mCycleIdx++; }
-            mode = kCycleList[mCycleIdx % kCycleLen];
+            target = kCycleList[mCycleIdx % kCycleLen];
         } else if (mAutoCycle == 2) {
             if (beatTrig && ++mCycleBeats >= 16) { mCycleBeats = 0; mCycleIdx++; }
-            mode = kCycleList[mCycleIdx % kCycleLen];
+            target = kCycleList[mCycleIdx % kCycleLen];
         } else if (mAutoCycle == 3) {
-            mode = smartSelect(dt);
+            target = smartSelect(dt);
         }
-        mEffectiveMode = mode;
+        // Switch smoothly: wait for a beat to land the change on (or 2.5s max),
+        // then crossfade old->new over a duration that's snappier on louder music.
+        if (target != mCurMode && !mWantSwitch && mTransition >= 1.f) { mWantSwitch = true; mSwitchWait = 0.f; }
+        if (mWantSwitch) {
+            mSwitchWait += dt;
+            if (beatTrig || mSwitchWait > 2.5f) {
+                mPrevMode = mCurMode; mCurMode = target; mTransition = 0.f; mWantSwitch = false;
+                mTransDur = 0.7f - 0.4f * mAvgLevel; if (mTransDur < 0.25f) mTransDur = 0.25f;
+            }
+        }
+        if (mTransition < 1.f) { mTransition += dt / mTransDur; if (mTransition > 1.f) mTransition = 1.f; }
+        mEffectiveMode = mCurMode;
 
         // per-frame state advance. The new phases are wrapped to [0,1) and used
         // as phase*2pi / phase*360, so wrapping stays continuous and bounded.
@@ -333,24 +400,22 @@ private:
         mRipplePhase += dt * (0.25f + 0.6f * level); mRipplePhase -= std::floor(mRipplePhase);
         mCometPhase += dt * (0.22f + 0.5f * level); mCometPhase -= std::floor(mCometPhase);
         mScanPhase += dt * (0.25f + 0.6f * level); mScanPhase -= std::floor(mScanPhase);
-        if (mode == 1) {
-            if (beatTrig) { mRingOn = true; mRingPhase = 0.f; }
-            if (mRingOn) { mRingPhase += dt / 0.6f; if (mRingPhase > 1.5f) mRingOn = false; }
+        // advance ALL effect state every frame so both designs in a crossfade are live
+        if (beatTrig) { mRingOn = true; mRingPhase = 0.f; }
+        if (mRingOn) { mRingPhase += dt / 0.6f; if (mRingPhase > 1.5f) mRingOn = false; }
+        if (beatTrig && !mNodes.empty()) {
+            const LayoutNode& q = mNodes[std::rand() % (int)mNodes.size()];
+            for (auto& b : mBursts) if (!b.on) { b.on = true; b.age = 0.f; b.x = q.nx; b.y = q.ny; break; }
         }
-        if (mode == 10) {  // fireworks: spawn a burst at a random LED on each beat
-            if (beatTrig && !mNodes.empty()) {
-                const LayoutNode& q = mNodes[std::rand() % (int)mNodes.size()];
-                for (auto& b : mBursts) if (!b.on) { b.on = true; b.age = 0.f; b.x = q.nx; b.y = q.ny; break; }
-            }
-            for (auto& b : mBursts) if (b.on) { b.age += dt; if (b.age > 1.2f) b.on = false; }
-        }
-        if (mode == 11) {  // rain: drop a band from the top on each beat
-            if (beatTrig) for (auto& rf : mRainFront) if (rf < 0.f) { rf = 1.05f; break; }
-            for (auto& rf : mRainFront) if (rf >= 0.f) { rf -= dt / 1.1f; if (rf < -0.1f) rf = -1.f; }
-        }
+        for (auto& b : mBursts) if (b.on) { b.age += dt; if (b.age > 1.2f) b.on = false; }
+        if (beatTrig) for (auto& rf : mRainFront) if (rf < 0.f) { rf = 1.05f; break; }
+        for (auto& rf : mRainFront) if (rf >= 0.f) { rf -= dt / 1.1f; if (rf < -0.1f) rf = -1.f; }
         int dom = 0; float dmax = 0.f;  // dominant band (for colorwash)
         for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
-        const float chase = std::fmod(mChasePhase, 1.f);
+
+        // stash per-frame context so nodeColor() can render any design
+        mCtxLevel = level; mCtxBeat = beat; mCtxBass = bass; mCtxTreble = treble;
+        mCtxNb = nb; mCtxDom = dom; mCtxChase = std::fmod(mChasePhase, 1.f); mCtxBeatTrig = beatTrig;
 
         // optional model-group filter (only light LEDs in the chosen group)
         unsigned long selMask = 0; bool filter = false;
@@ -358,78 +423,20 @@ private:
             for (size_t gi = 0; gi < mGroupNames.size(); ++gi)
                 if (mGroupNames[gi] == mSpatialGroup) { selMask = (1UL << gi); filter = true; break; }
 
+        const bool blending = mTransition < 1.f && mPrevMode != mCurMode;
+        const float tt = mTransition;
         for (const LayoutNode& p : mNodes) {
             if (filter && !(p.mask & selMask)) continue;
             long s = p.ch - 1;
             if (s < 0 || s + 2 >= cap) continue;
-
-            float br = 0.f; double hue = 0.0, sat = 1.0;
-            switch (mode) {
-            case 1:  // bloom - beat shockwave from centre
-                if (mRingOn) br = std::exp(-std::pow((p.dist - mRingPhase) / 0.16f, 2.f));
-                br *= (0.45f + 0.55f * level); hue = 210.0 - 170.0 * bass; break;
-            case 2: { int bi = (int)(p.nx * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
-                br = mAnalyzer.band(bi); hue = 280.0 * p.nx; } break;  // spectrum across X
-            case 3:  // vu - loudness by height
-                br = (p.ny <= level) ? (0.4f + 0.6f * (1.f - (level - p.ny))) : 0.f; hue = 120.0 * (1.0 - p.ny); break;
-            case 4: { int bi = (int)(p.dist * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
-                br = mAnalyzer.band(bi); hue = 200.0 + 100.0 * p.dist; } break;  // radial spectrum
-            case 5:  // pulse - whole display breathes with level
-                br = 0.1f + 0.9f * level; hue = 210.0 - 170.0 * bass + 90.0 * treble; break;
-            case 6:  // spike - sharp full flash on beats (decaying)
-                br = beat; hue = 40.0 + 200.0 * bass; break;
-            case 7: { float dd = std::fabs(p.nx - chase); dd = std::min(dd, 1.f - dd);  // chase sweep
-                br = std::exp(-std::pow(dd / 0.10f, 2.f)) * (0.4f + 0.6f * level); hue = 200.0 + 120.0 * p.nx; } break;
-            case 8: { float tw = std::sin(mWavePhase * 6.0f + p.nx * 53.0f + p.ny * 97.0f);  // sparkle
-                br = (tw > (1.f - 0.5f * level - (beatTrig ? 0.4f : 0.f))) ? 1.f : 0.f; hue = 180.0 + 120.0 * p.ny; } break;
-            case 9: { float w = 0.5f + 0.5f * std::sin((p.nx + p.ny) * 9.42f - mWavePhase * 6.2832f);  // intensity wave
-                br = w * (0.25f + 0.75f * level); hue = 260.0 * w; } break;
-            case 10: { for (const auto& b : mBursts) if (b.on) {  // fireworks
-                float rd = std::hypot(p.nx - b.x, p.ny - b.y);
-                br += std::exp(-std::pow((rd - b.age * 0.9f) / 0.08f, 2.f)) * (1.f - b.age / 1.2f); }
-                br = std::min(1.f, br) * (0.5f + 0.5f * level); hue = 30.0 + 300.0 * bass; } break;
-            case 11: { for (float rf : mRainFront) if (rf >= 0.f) br += std::exp(-std::pow((p.ny - rf) / 0.10f, 2.f));  // rain
-                br = std::min(1.f, br); hue = 200.0; } break;
-            case 12:  // strobe - full white flash on beat
-                br = (beat > 0.5f) ? 1.f : 0.f; sat = 0.0; break;
-            case 13:  // colorwash - whole display follows the dominant frequency
-                br = 0.15f + 0.85f * level; hue = 280.0 * dom / std::max(1, nb - 1); break;
-            case 14:  // grow - lit region expands from centre with level (Level Shape)
-                br = (p.dist <= level * 1.15f) ? (0.5f + 0.5f * level) : 0.f; hue = 140.0 - 120.0 * p.dist; break;
-            case 15: {  // spin - rotating colour wheel, speeds up with level
-                float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) * 57.2958f;
-                br = 0.2f + 0.8f * level; hue = ang + mSpinPhase * 360.0f + 180.0 * p.dist; } break;
-            case 16: {  // bars - graphic-EQ columns: light up to each band's level by X
-                int col = (int)(p.nx * nb); col = col < 0 ? 0 : (col >= nb ? nb - 1 : col);
-                float h = mAnalyzer.band(col); br = (p.ny <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * p.nx; } break;
-            case 17: {  // ripple - continuous concentric rings from centre
-                float v = 0.5f + 0.5f * std::sin((p.dist * 5.0f - mRipplePhase) * 6.2832f);
-                br = std::pow(v, 3.f) * (0.3f + 0.7f * level); hue = 190.0 + 130.0 * p.dist; } break;
-            case 18: {  // fire - hot at the bottom, flickering, bass-fed
-                float flick = 0.55f + 0.45f * std::sin(mWavePhase * 8.f + p.nx * 40.f + p.ny * 25.f);
-                float base = (1.f - p.ny); base *= base;
-                br = base * (0.35f + 0.65f * bass) * flick * (0.5f + 0.5f * level); hue = 50.0 * std::min(1.f, br * 1.3f); } break;
-            case 19: {  // comet - bright head with a fading trail travelling across X
-                float delta = mCometPhase - p.nx; if (delta < 0.f) delta += 1.f;
-                br = (delta < 0.35f) ? (1.f - delta / 0.35f) * (0.4f + 0.6f * level) : 0.f; hue = 190.0 + 90.0 * delta; } break;
-            case 20: {  // plasma - flowing colour field, level-modulated
-                float v = std::sin(p.nx * 6.f + mWavePhase * 3.f) + std::sin(p.ny * 6.f + mWavePhase * 2.f)
-                          + std::sin((p.nx + p.ny) * 5.f + mWavePhase); v = (v / 3.f + 1.f) * 0.5f;
-                br = (0.3f + 0.7f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
-            case 21: {  // scan - a bar sweeps up and down (Larson), tempo-driven
-                float scan = 0.5f + 0.5f * std::sin(mScanPhase * 6.2832f); float dd = std::fabs(p.ny - scan);
-                br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0 + 30.0 * scan; } break;
-            default: {  // confetti - random multicolour LEDs pop on each beat
-                float h1 = std::fmod(std::sin(p.ch * 12.9898f) * 43758.5453f, 1.f); if (h1 < 0) h1 += 1.f;
-                br = (h1 < 0.15f + 0.35f * beat) ? beat : 0.f;
-                float h2 = std::fmod(std::sin(p.ch * 78.233f) * 43758.5453f, 1.f); if (h2 < 0) h2 += 1.f;
-                hue = 360.0 * h2; } break;
-            }
-            br *= gainI;
-            if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
-
             uint8_t R, G, B;
-            hsv2rgb(hue, sat, br, R, G, B);
+            nodeColor(mCurMode, p, R, G, B);
+            if (blending) {  // crossfade from the previous design
+                uint8_t R2, G2, B2; nodeColor(mPrevMode, p, R2, G2, B2);
+                R = (uint8_t)((int)R2 + (int)(((int)R - (int)R2) * tt));
+                G = (uint8_t)((int)G2 + (int)(((int)G - (int)G2) * tt));
+                B = (uint8_t)((int)B2 + (int)(((int)B - (int)B2) * tt));
+            }
             d[s] = R; d[s + 1] = G; d[s + 2] = B;
         }
     }
@@ -628,6 +635,14 @@ private:
     float mSilenceT = 0.f, mSmartTimer = 0.f;
     bool mSongChanged = false;
     int mDetectedCat = 4, mSmartCategory = -1, mSmartPoolIdx = 0, mSmartMode = 0;
+    // smooth crossfade between designs
+    int mCurMode = 1, mPrevMode = 1;
+    float mTransition = 1.f, mTransDur = 0.5f, mSwitchWait = 0.f;
+    bool mWantSwitch = false;
+    // per-frame render context for nodeColor()
+    float mCtxLevel = 0.f, mCtxBeat = 0.f, mCtxBass = 0.f, mCtxTreble = 0.f, mCtxChase = 0.f;
+    int mCtxNb = 8, mCtxDom = 0;
+    bool mCtxBeatTrig = false;
     struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
     Burst mBursts[5];
 };
