@@ -82,6 +82,15 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   </div>
 
   <div class="card">
+    <div class="head"><span class="t">Physical switch (GPIO)</span><?php echo afTog('switch_enabled'); ?><span class="stat" style="margin-left:8px"><span class="dot" id="af-sw"></span><span id="af-swtxt" style="font-size:12.5px;color:#6b7280"></span></span></div>
+    <div class="body"><div class="grid">
+      <div class="lab">GPIO number</div><div><?php echo afInt('switch_gpio', '-1', -1); ?> <span class="help">sysfs GPIO of the switch pin (BBB P9.12 = 60; Pi: the BCM number)</span></div>
+      <div class="lab">Active level</div><div><select onChange="SetPluginSetting('pixelpulse','switch_active',this.value,0,0);"><?php foreach (array('high','low') as $m) echo "<option value='$m'" . (af_get('switch_active','high')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">high = on at 3.3V; low = on at GND (use a pull resistor)</span></div>
+      <div class="lab"></div><div class="help">A hardware switch enables/disables the plugin. It runs only when both the software toggle above and the switch are on. Read about twice a second.</div>
+    </div></div>
+  </div>
+
+  <div class="card">
     <div class="head"><span class="t">Audio input</span></div>
     <div class="body"><div class="grid">
       <div class="lab">Device</div><div><select id="af-device" onChange="SetPluginSetting('pixelpulse','audioDevice',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('audioDevice', 'default')); ?>"><?php echo htmlspecialchars(af_get('audioDevice', 'default')); ?> (current)</option></select> <span class="help">USB capture device</span></div>
@@ -341,6 +350,8 @@ setInterval(function(){
     document.getElementById('af-treble').style.width=pct(s.treble);
     document.getElementById('af-beat').className='dot'+(s.beat>0.5?' beat':(s.active?' on':''));
     document.getElementById('af-bpm').textContent = s.bpm>0 ? Math.round(s.bpm) : '–';
+    var swd=document.getElementById('af-sw'), swt=document.getElementById('af-swtxt');
+    if(swd){ if(s.switchEnabled){ swd.className='dot'+(s.switchOn?' on':' beat'); swt.textContent=s.switchOn?'switch ON':'switch OFF'; } else { swd.className='dot'; swt.textContent='not used'; } }
     var bars=afBands.children; (s.bands||[]).forEach(function(v,i){ if(bars[i]) bars[i].style.height=Math.max(2,Math.round(v*100))+'%'; });
     document.getElementById('af-hint').textContent = s.deviceOk ? '' : 'Tip: set the device (e.g. hw:1,0) and check it appears in the dropdown. Run "arecord -l" on the device to find it.';
   }).catch(function(){ document.getElementById('af-devtxt').textContent='(plugin not running — enable it and restart fppd)'; });

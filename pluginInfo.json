@@ -15,6 +15,9 @@
 	"settingsSchema": [
 		{ "key": "enabled", "label": "Plugin enabled", "type": "bool", "default": false, "group": "general", "appliesLive": true },
 		{ "key": "onlyWhenPlaying", "label": "Only while a sequence is playing", "type": "bool", "default": true, "group": "general", "appliesLive": true },
+		{ "key": "switch_enabled", "label": "Physical switch", "type": "bool", "default": false, "group": "switch", "appliesLive": true, "help": "Gate the plugin with a hardware switch wired to a GPIO pin (read ~2x/sec)." },
+		{ "key": "switch_gpio", "label": "GPIO number", "type": "int", "default": -1, "min": -1, "max": 1024, "step": 1, "group": "switch", "appliesLive": true, "help": "Linux/sysfs GPIO number of the switch pin (e.g. BBB P9.12 = 60; on most Pis this is the BCM number). Use a pull resistor." },
+		{ "key": "switch_active", "label": "Switch active level", "type": "enum", "default": "high", "options": ["high", "low"], "group": "switch", "appliesLive": true, "help": "high = pin high enables the plugin; low = pin low enables (switch to ground with pull-up)." },
 		{ "key": "audioDevice", "label": "Audio input device", "type": "string", "default": "default", "group": "audio", "appliesLive": true, "help": "ALSA capture device for the USB input, e.g. hw:1,0" },
 		{ "key": "sampleRate", "label": "Sample rate", "type": "enum", "default": "44100", "options": ["44100", "48000"], "group": "audio", "appliesLive": true },
 		{ "key": "gain", "label": "Input gain", "type": "float", "default": 1.0, "min": 0.1, "max": 10, "step": 0.1, "group": "audio", "appliesLive": true, "widget": "slider" },

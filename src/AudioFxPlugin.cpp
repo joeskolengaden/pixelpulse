@@ -126,6 +126,7 @@ public:
         mLastFrameWrite = mLastReload;
         applySettings();
         loadLayoutIfChanged();
+        pollSwitch();
         mAnalyzer.configure(mSampleRate, 1024, 8);
         restartCapture();
     }
@@ -134,7 +135,7 @@ public:
     void modifyChannelData(int /*ms*/, uint8_t* d) override {
         maybeReload();
         writeStatus();
-        if (!mEnabled || d == nullptr) return;
+        if (!mEnabled || !mSwitchOn || d == nullptr) return;
         if (!shouldModify()) return;
 
         applySpeed();  // Phase 3: audio -> playback speed (light-only sequences)
@@ -503,8 +504,37 @@ private:
             applySettings();
             loadLayoutIfChanged();
             pushAnalyzerParams();
+            pollSwitch();
             if (mDevice != prevDev || mSampleRate != prevRate || mChMode != prevCh) restartCapture();
         }
+    }
+    // Read a GPIO input via sysfs (no extra library dependency, works on BBB and
+    // Pi). Lazily exports the pin as an input. Returns 0/1, or -1 on error.
+    int readGpio(int pin) {
+        if (pin < 0) return -1;
+        char path[80];
+        snprintf(path, sizeof(path), "/sys/class/gpio/gpio%d/value", pin);
+        FILE* f = fopen(path, "r");
+        if (!f) {
+            FILE* e = fopen("/sys/class/gpio/export", "w");
+            if (e) { fprintf(e, "%d", pin); fclose(e); }
+            char dpath[80];
+            snprintf(dpath, sizeof(dpath), "/sys/class/gpio/gpio%d/direction", pin);
+            FILE* dd = fopen(dpath, "w");
+            if (dd) { fprintf(dd, "in"); fclose(dd); }
+            f = fopen(path, "r");
+            if (!f) return -1;
+        }
+        int c = fgetc(f);
+        fclose(f);
+        return c == '1' ? 1 : (c == '0' ? 0 : -1);
+    }
+    // A configured physical switch gates the plugin on/off. If unconfigured or
+    // unreadable, mSwitchOn stays true (no gating).
+    void pollSwitch() {
+        if (!mSwitchEnabled || mSwitchGpio < 0) { mSwitchOn = true; return; }
+        int v = readGpio(mSwitchGpio);
+        if (v >= 0) mSwitchOn = mSwitchActiveHigh ? (v == 1) : (v == 0);
     }
     void pushAnalyzerParams() {
         mAnalyzer.setGain(mGain);
@@ -533,11 +563,12 @@ private:
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
             "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,"
-            "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"bands\":[",
+            "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"switchEnabled\":%s,\"switchOn\":%s,\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
             mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(), spatialModeName(mEffectiveMode),
-            (mDetectedCat >= 0 && mDetectedCat < kNumMusicTypes) ? kMusicTypes[mDetectedCat] : "");
+            (mDetectedCat >= 0 && mDetectedCat < kNumMusicTypes) ? kMusicTypes[mDetectedCat] : "",
+            mSwitchEnabled ? "true" : "false", mSwitchOn ? "true" : "false");
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
             fprintf(f, "%s%.3f", b ? "," : "", mAnalyzer.band(b));
         fprintf(f, "]}");
@@ -573,6 +604,9 @@ private:
     void applySettings() {
         mEnabled = toLong(cfg("enabled"), 0) != 0;
         mOnlyWhenPlaying = toLong(cfg("onlyWhenPlaying"), 1) != 0;
+        mSwitchEnabled = toLong(cfg("switch_enabled"), 0) != 0;
+        mSwitchGpio = (int)toLong(cfg("switch_gpio"), -1);
+        mSwitchActiveHigh = cfg("switch_active") != "low";  // default active-high
         mDevice = cfg("audioDevice");
         if (mDevice.empty()) mDevice = "default";
         mSampleRate = (int)toLong(cfg("sampleRate"), 44100);
@@ -621,6 +655,8 @@ private:
     std::chrono::steady_clock::time_point mLastReload, mLastStatus, mLastFrameWrite;
 
     bool mEnabled = false, mOnlyWhenPlaying = true;
+    bool mSwitchEnabled = false, mSwitchActiveHigh = true, mSwitchOn = true;
+    int mSwitchGpio = -1;
     std::string mDevice = "default";
     int mSampleRate = 44100;
     float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;
