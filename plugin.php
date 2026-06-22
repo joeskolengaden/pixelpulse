@@ -166,7 +166,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">35 styles, driven by physical LED position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous','tunnel','kaleido','vortex','rainbow','breathe','heartbeat','lightning','matrix') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">43 styles, driven by physical LED position</span></div>
       <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
       <div class="lab">With playback</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_blend',this.value,0,0);"><?php foreach (array('replace'=>'replace (override)','overlay'=>'overlay (keep brighter)','add'=>'add (brighten)','modulate'=>'modulate (pulse the show)') as $v=>$lbl) echo "<option value='$v'" . (af_get('spatial_blend','replace')===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">override the sequence, or blend with it</span></div>
       <div class="lab">Auto design change</div><div><select onChange="afAutocycle(this);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music · when on, designs cycle on their own (no show needed)</span></div>
@@ -293,7 +293,7 @@ function afPalCol(name,t,br){ var P=afPals[name]; if(!P) return null; t-=Math.fl
   var i=0; while(i<P.length-1 && t>P[i+1][0]) i++;
   var a=P[i], b=P[i<P.length-1?i+1:i], span=b[0]-a[0], f=span>1e-4?(t-a[0])/span:0; if(f<0)f=0; if(f>1)f=1;
   return 'rgb('+Math.round((a[1]+(b[1]-a[1])*f)*br)+','+Math.round((a[2]+(b[2]-a[2])*f)*br)+','+Math.round((a[3]+(b[3]-a[3])*f)*br)+')'; }
-var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5)};
+var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0};
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
   if(!afPts) return;
@@ -313,6 +313,8 @@ function afPrevLoop(){
   afSt.ripple+=dt*(0.25+0.6*lvl); afSt.ripple-=Math.floor(afSt.ripple);
   afSt.comet+=dt*(0.22+0.5*lvl); afSt.comet-=Math.floor(afSt.comet);
   afSt.scan+=dt*(0.25+0.6*lvl); afSt.scan-=Math.floor(afSt.scan);
+  var _bpm=s.bpm||0; afSt.heart+=dt*(_bpm>30?_bpm/60:1.25); afSt.heart-=Math.floor(afSt.heart);
+  afSt.matrix+=dt*(0.3+0.7*lvl); afSt.matrix-=Math.floor(afSt.matrix);
   if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;}
   if(trig&&afSt.bursts.length<5){ var q=afPts[Math.floor(Math.random()*afPts.length)]; afSt.bursts.push({x:q[0],y:q[1],age:0}); }
   afSt.bursts.forEach(function(b){b.age+=dt;}); afSt.bursts=afSt.bursts.filter(function(b){return b.age<=1.2;});
@@ -373,6 +375,14 @@ function afPrevLoop(){
       case 'metaballs': var mf=0; for(var mk=0;mk<3;mk++){ var ax=nx-afSt.ballX[mk], ay=ny-afSt.ballY[mk]; mf+=afSt.ballR/(ax*ax+ay*ay+0.004); } br=mf>1?1:(mf<0.25?0:(mf-0.25)/0.75); hue=360*nx; break;
       case 'bursts': var an=Math.atan2(ny-0.5,nx-0.5); var bv=0.5+0.5*Math.sin(an*6+afSt.spin*6.2832+dist*8); br=bv*bv*(0.3+0.7*lvl); hue=360*(an/6.2832+0.5); break;
       case 'drift': var an2=Math.atan2(ny-0.5,nx-0.5); var dv=0.5+0.5*Math.sin(an2*3+dist*10-afSt.spin*6.2832); br=dv*dv*(0.3+0.7*lvl); hue=360*dist; break;
+      case 'tunnel': var tz=dist*3-afSt.ripple*2; tz-=Math.floor(tz); br=Math.pow(0.5+0.5*Math.sin(tz*6.2832),2)*(0.3+0.7*lvl); hue=(360*tz+afSt.spin*360)%360; break;
+      case 'kaleido': var ka=Math.atan2(ny-0.5,nx-0.5)+3.14159, kseg=1.0472, kw=Math.abs((ka%kseg)-kseg*0.5); var kv=0.5+0.5*Math.sin(kw*12+afSt.wave*3-dist*10); br=kv*kv*(0.35+0.65*lvl); hue=(360*(kw/(kseg*0.5))+afSt.spin*360)%360; break;
+      case 'vortex': var va=Math.atan2(ny-0.5,nx-0.5); var vv=0.5+0.5*Math.sin(va*2+Math.log(dist+0.05)*6-afSt.spin*12.566); br=vv*vv*(0.3+0.7*lvl); hue=(360*(va/6.2832+0.5)+afSt.spin*180)%360; break;
+      case 'rainbow': var rs=nx+ny*0.25-afSt.comet; rs-=Math.floor(rs); br=0.45+0.55*lvl; hue=360*rs; break;
+      case 'breathe': var bb2=0.5+0.5*Math.sin(afSt.wave*1.2); br=(0.2+0.8*lvl)*(0.45+0.55*bb2)*(1-0.35*dist); hue=(afSt.wave*18)%360; break;
+      case 'heartbeat': var hph=afSt.heart, ht=Math.exp(-Math.pow(hph/0.05,2))+0.6*Math.exp(-Math.pow((hph-0.16)/0.05,2)); if(ht>1)ht=1; br=ht*(0.4+0.6*lvl)*(1-0.25*dist); hue=350; sat=1-0.5*ht; break;
+      case 'lightning': var lbx=0.5+0.42*Math.sin(afSt.scan*8.168), lon=(treble>0.35)?(0.4+0.6*treble):0, ldd=Math.abs(nx-lbx); br=Math.exp(-Math.pow(ldd/0.035,2))*lon; hue=215; sat=0.45; break;
+      case 'matrix': var mcol=Math.min(23,Math.floor(nx*24)); var mh=Math.sin(mcol*12.9898)*43758.5453; mh-=Math.floor(mh); var mph=(afSt.matrix*(0.5+mh)+mh)%1; var mhead=1.1-mph*1.2, md=ny-mhead; br=(md>=0&&md<0.4)?(1-md/0.4)*(0.4+0.6*lvl):0; hue=130; break;
       default: for(var lk2=0;lk2<8;lk2++){ var lax=nx-afSt.lissX[lk2], lay=ny-afSt.lissY[lk2], ld=lax*lax+lay*lay, la=(8-lk2)/8; var lb=Math.exp(-ld/0.008)*la; if(lb>br)br=lb; } br*=(0.5+0.5*lvl); hue=360*((afSt.wave*0.2)%1); break;
     }
     if(br<0)br=0; if(br>1)br=1;
