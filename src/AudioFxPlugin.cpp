@@ -88,8 +88,9 @@ const char* const kLayoutPath = "/home/fpp/media/config/pixelpulse_layout.txt";
 // Spatial effect vocabulary (live takes on xLights' VU-Meter styles + extras).
 const char* const kSpatialModes[] = {
     "bloom", "spectrum", "vu", "radial", "pulse", "spike", "chase",
-    "sparkle", "wave", "fireworks", "rain", "strobe", "colorwash", "grow"};
-const int kNumSpatialModes = 14;
+    "sparkle", "wave", "fireworks", "rain", "strobe", "colorwash", "grow",
+    "spin", "bars", "ripple", "fire", "comet", "plasma", "scan", "confetti"};
+const int kNumSpatialModes = 22;
 int spatialModeIndex(const std::string& s) {
     for (int i = 0; i < kNumSpatialModes; ++i)
         if (s == kSpatialModes[i]) return i + 1;
@@ -99,8 +100,8 @@ const char* spatialModeName(int idx) {
     return (idx >= 1 && idx <= kNumSpatialModes) ? kSpatialModes[idx - 1] : "bloom";
 }
 // Curated order the auto-cycle walks through (1-based mode indices).
-const int kCycleList[] = {1, 5, 7, 9, 10, 2, 8, 11, 4, 13, 14, 3};
-const int kCycleLen = 12;
+const int kCycleList[] = {1, 5, 15, 7, 17, 9, 16, 10, 20, 2, 18, 19, 8, 11, 21, 4, 13, 22};
+const int kCycleLen = 18;
 }  // namespace
 
 class AudioFxPlugin : public FPPPlugin {
@@ -263,9 +264,14 @@ private:
         }
         mEffectiveMode = mode;
 
-        // per-frame state advance
+        // per-frame state advance. The new phases are wrapped to [0,1) and used
+        // as phase*2pi / phase*360, so wrapping stays continuous and bounded.
         mChasePhase += dt * (0.12f + 0.5f * level);
         mWavePhase += dt * 0.6f;
+        mSpinPhase += dt * (0.08f + 0.25f * level); mSpinPhase -= std::floor(mSpinPhase);
+        mRipplePhase += dt * (0.25f + 0.6f * level); mRipplePhase -= std::floor(mRipplePhase);
+        mCometPhase += dt * (0.22f + 0.5f * level); mCometPhase -= std::floor(mCometPhase);
+        mScanPhase += dt * (0.25f + 0.6f * level); mScanPhase -= std::floor(mScanPhase);
         if (mode == 1) {
             if (beatTrig) { mRingOn = true; mRingPhase = 0.f; }
             if (mRingOn) { mRingPhase += dt / 0.6f; if (mRingPhase > 1.5f) mRingOn = false; }
@@ -327,8 +333,36 @@ private:
                 br = (beat > 0.5f) ? 1.f : 0.f; sat = 0.0; break;
             case 13:  // colorwash - whole display follows the dominant frequency
                 br = 0.15f + 0.85f * level; hue = 280.0 * dom / std::max(1, nb - 1); break;
-            default:  // grow - lit region expands from centre with level (Level Shape)
+            case 14:  // grow - lit region expands from centre with level (Level Shape)
                 br = (p.dist <= level * 1.15f) ? (0.5f + 0.5f * level) : 0.f; hue = 140.0 - 120.0 * p.dist; break;
+            case 15: {  // spin - rotating colour wheel, speeds up with level
+                float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) * 57.2958f;
+                br = 0.2f + 0.8f * level; hue = ang + mSpinPhase * 360.0f + 180.0 * p.dist; } break;
+            case 16: {  // bars - graphic-EQ columns: light up to each band's level by X
+                int col = (int)(p.nx * nb); col = col < 0 ? 0 : (col >= nb ? nb - 1 : col);
+                float h = mAnalyzer.band(col); br = (p.ny <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * p.nx; } break;
+            case 17: {  // ripple - continuous concentric rings from centre
+                float v = 0.5f + 0.5f * std::sin((p.dist * 5.0f - mRipplePhase) * 6.2832f);
+                br = std::pow(v, 3.f) * (0.3f + 0.7f * level); hue = 190.0 + 130.0 * p.dist; } break;
+            case 18: {  // fire - hot at the bottom, flickering, bass-fed
+                float flick = 0.55f + 0.45f * std::sin(mWavePhase * 8.f + p.nx * 40.f + p.ny * 25.f);
+                float base = (1.f - p.ny); base *= base;
+                br = base * (0.35f + 0.65f * bass) * flick * (0.5f + 0.5f * level); hue = 50.0 * std::min(1.f, br * 1.3f); } break;
+            case 19: {  // comet - bright head with a fading trail travelling across X
+                float delta = mCometPhase - p.nx; if (delta < 0.f) delta += 1.f;
+                br = (delta < 0.35f) ? (1.f - delta / 0.35f) * (0.4f + 0.6f * level) : 0.f; hue = 190.0 + 90.0 * delta; } break;
+            case 20: {  // plasma - flowing colour field, level-modulated
+                float v = std::sin(p.nx * 6.f + mWavePhase * 3.f) + std::sin(p.ny * 6.f + mWavePhase * 2.f)
+                          + std::sin((p.nx + p.ny) * 5.f + mWavePhase); v = (v / 3.f + 1.f) * 0.5f;
+                br = (0.3f + 0.7f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
+            case 21: {  // scan - a bar sweeps up and down (Larson), tempo-driven
+                float scan = 0.5f + 0.5f * std::sin(mScanPhase * 6.2832f); float dd = std::fabs(p.ny - scan);
+                br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0 + 30.0 * scan; } break;
+            default: {  // confetti - random multicolour LEDs pop on each beat
+                float h1 = std::fmod(std::sin(p.ch * 12.9898f) * 43758.5453f, 1.f); if (h1 < 0) h1 += 1.f;
+                br = (h1 < 0.15f + 0.35f * beat) ? beat : 0.f;
+                float h2 = std::fmod(std::sin(p.ch * 78.233f) * 43758.5453f, 1.f); if (h2 < 0) h2 += 1.f;
+                hue = 360.0 * h2; } break;
             }
             br *= gainI;
             if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
@@ -525,6 +559,7 @@ private:
     std::chrono::steady_clock::time_point mLastFrame;
     bool mBeatLatch = false, mRingOn = false;
     float mRingPhase = 0.f, mChasePhase = 0.f, mWavePhase = 0.f;
+    float mSpinPhase = 0.f, mRipplePhase = 0.f, mCometPhase = 0.f, mScanPhase = 0.f;
     float mRainFront[3] = {-1.f, -1.f, -1.f};
     struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
     Burst mBursts[5];
