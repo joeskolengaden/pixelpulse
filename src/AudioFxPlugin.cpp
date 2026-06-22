@@ -91,8 +91,9 @@ const char* const kSpatialModes[] = {
     "sparkle", "wave", "fireworks", "rain", "strobe", "colorwash", "grow",
     "spin", "bars", "ripple", "fire", "comet", "plasma", "scan", "confetti",
     "gravimeter", "gravcenter", "waterfall", "djlight", "puddles",
-    "fire2012", "aurora", "noise", "twinkle"};
-const int kNumSpatialModes = 31;
+    "fire2012", "aurora", "noise", "twinkle",
+    "metaballs", "bursts", "drift", "lissajous"};
+const int kNumSpatialModes = 35;
 const int kWfT = 64;    // waterfall (spectrogram) history depth
 const int kHeatN = 32;  // fire2012 heat cells along height
 int spatialModeIndex(const std::string& s) {
@@ -104,8 +105,8 @@ const char* spatialModeName(int idx) {
     return (idx >= 1 && idx <= kNumSpatialModes) ? kSpatialModes[idx - 1] : "bloom";
 }
 // Curated order the auto-cycle walks through (1-based mode indices).
-const int kCycleList[] = {1, 5, 15, 23, 7, 29, 17, 9, 26, 16, 10, 28, 25, 20, 30, 2, 18, 27, 19, 24, 11, 31, 21, 4, 13, 22};
-const int kCycleLen = 26;
+const int kCycleList[] = {1, 5, 15, 23, 32, 7, 29, 17, 9, 26, 33, 16, 10, 28, 25, 20, 34, 30, 2, 18, 27, 19, 24, 35, 11, 31, 21, 4, 13, 22};
+const int kCycleLen = 30;
 
 // "Smart" auto-DJ: the live music is classified into one of these categories,
 // each with a pool of the designs that suit it best (1-based mode indices).
@@ -113,10 +114,10 @@ const char* const kMusicTypes[] = {"dance", "ambient", "bass", "bright", "groove
 const int kNumMusicTypes = 5;
 const int kSmartPools[5][6] = {
     {1, 10, 26, 28, 23, 5},   // dance/EDM   : bloom, fireworks, djlight, fire2012, gravimeter, pulse
-    {29, 20, 30, 17, 31, 9},  // ambient     : aurora, plasma, noise, ripple, twinkle, wave
-    {5, 1, 23, 28, 19, 24},   // bass-heavy  : pulse, bloom, gravimeter, fire2012, comet, gravcenter
-    {8, 22, 27, 25, 7, 17},   // bright/pop  : sparkle, confetti, puddles, waterfall, chase, ripple
-    {7, 2, 25, 19, 16, 26},   // groove      : chase, spectrum, waterfall, comet, bars, djlight
+    {29, 20, 30, 34, 31, 9},  // ambient     : aurora, plasma, noise, drift, twinkle, wave
+    {5, 1, 23, 28, 32, 24},   // bass-heavy  : pulse, bloom, gravimeter, fire2012, metaballs, gravcenter
+    {8, 22, 27, 25, 33, 35},  // bright/pop  : sparkle, confetti, puddles, waterfall, bursts, lissajous
+    {7, 2, 25, 32, 16, 26},   // groove      : chase, spectrum, waterfall, metaballs, bars, djlight
 };
 const int kSmartPoolLen = 6;
 
@@ -435,9 +436,22 @@ private:
         case 30: { float v = std::sin(p.nx * 8.f + mWavePhase * 2.f) * std::cos(p.ny * 7.f - mWavePhase * 1.5f)  // noise field
                        + std::sin((p.nx * p.ny) * 12.f + mWavePhase); v = (v + 2.f) * 0.25f;
             br = (0.25f + 0.75f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
-        default: { float tw = std::sin(mWavePhase * 1.8f + p.ch * 2.399f);  // twinkle (colortwinkles)
+        case 31: { float tw = std::sin(mWavePhase * 1.8f + p.ch * 2.399f);  // twinkle (colortwinkles)
             float on = tw > 0.5f ? (tw - 0.5f) * 2.f : 0.f; br = on * (0.5f + 0.5f * level);
             float h = std::fmod(std::sin(p.ch * 0.0173f) * 43758.5453f, 1.f); if (h < 0) h += 1.f; hue = 360.0 * h; } break;
+        case 32: { float f = 0.f;  // metaballs - blobby fields from moving centres
+            for (int k = 0; k < 3; ++k) { float ax = p.nx - mBallX[k], ay = p.ny - mBallY[k]; f += mBallR / (ax * ax + ay * ay + 0.004f); }
+            br = f > 1.f ? 1.f : (f < 0.25f ? 0.f : (f - 0.25f) / 0.75f); hue = 360.0 * p.nx; } break;
+        case 33: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f);  // bursts - rotating spokes
+            float v = 0.5f + 0.5f * std::sin(ang * 6.f + mSpinPhase * 6.2832f + p.dist * 8.f);
+            br = v * v * (0.3f + 0.7f * level); hue = 360.0 * (ang / 6.2832f + 0.5f); } break;
+        case 34: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f);  // drift - spiral arms
+            float v = 0.5f + 0.5f * std::sin(ang * 3.f + p.dist * 10.f - mSpinPhase * 6.2832f);
+            br = v * v * (0.3f + 0.7f * level); hue = 360.0 * p.dist; } break;
+        default: { for (int k = 0; k < 8; ++k) {  // lissajous - a point tracing a curve with a trail
+            float ax = p.nx - mLissX[k], ay = p.ny - mLissY[k], d = ax * ax + ay * ay, a = (8 - k) / 8.f;
+            float bb = std::exp(-d / 0.008f) * a; if (bb > br) br = bb; }
+            br *= (0.5f + 0.5f * level); hue = 360.0 * std::fmod(mWavePhase * 0.2f, 1.f); } break;
         }
         br *= mSpatialIntensity / 100.f;
         if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
@@ -529,6 +543,15 @@ private:
                 if (mHeat[y] > 1.f) mHeat[y] = 1.f;
             }
         }
+        // metaballs: three centres drifting on parametric paths, size from level
+        { float t = mWavePhase;
+          mBallX[0] = 0.5f + 0.40f * std::sin(t * 0.7f);       mBallY[0] = 0.5f + 0.40f * std::cos(t * 0.9f);
+          mBallX[1] = 0.5f + 0.35f * std::sin(t * 1.1f + 2.f); mBallY[1] = 0.5f + 0.40f * std::cos(t * 0.6f + 1.f);
+          mBallX[2] = 0.5f + 0.40f * std::sin(t * 0.5f + 4.f); mBallY[2] = 0.5f + 0.35f * std::cos(t * 1.3f + 3.f);
+          mBallR = 0.012f + 0.03f * level; }
+        // lissajous: advance the tracing point and shift its trail
+        for (int k = 7; k > 0; --k) { mLissX[k] = mLissX[k - 1]; mLissY[k] = mLissY[k - 1]; }
+        { float t = mWavePhase * 1.5f; mLissX[0] = 0.5f + 0.42f * std::sin(t * 3.f + 1.f); mLissY[0] = 0.5f + 0.42f * std::sin(t * 2.f); }
         int dom = 0; float dmax = 0.f;  // dominant band (for colorwash)
         for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
 
@@ -824,6 +847,8 @@ private:
     struct Puddle { float x = 0, y = 0, age = 0; bool on = false; };
     Puddle mPuddles[4];
     float mHeat[kHeatN] = {}, mFireAccum = 0.f;  // fire2012 heat model (phase 3)
+    float mBallX[3] = {0.5f, 0.5f, 0.5f}, mBallY[3] = {0.5f, 0.5f, 0.5f}, mBallR = 0.02f;  // metaballs (phase 4)
+    float mLissX[8] = {}, mLissY[8] = {};  // lissajous trail
     // smart auto-DJ: live music profile + selection state
     float mAvgLevel = 0.4f, mAvgBass = 0.3f, mAvgMid = 0.3f, mAvgTreble = 0.3f, mAvgBeat = 0.3f;
     float mSilenceT = 0.f, mSmartTimer = 0.f;
