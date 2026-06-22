@@ -174,6 +174,7 @@ public:
         applySettings();
         loadLayoutIfChanged();
         pollSwitch();
+        mNoiseLearnSeen = cfg("noise_learn");  // consume any persisted value (don't auto-learn at boot)
         mAnalyzer.configure(mSampleRate, 1024, 8);
         restartCapture();
     }
@@ -645,6 +646,8 @@ private:
             loadLayoutIfChanged();
             pushAnalyzerParams();
             pollSwitch();
+            std::string nl = cfg("noise_learn");  // a new value = "Calibrate silence" was pressed
+            if (nl != mNoiseLearnSeen) { mNoiseLearnSeen = nl; if (!nl.empty()) mAnalyzer.startNoiseLearn(3.0f); }
             if (mDevice != prevDev || mSampleRate != prevRate || mChMode != prevCh) restartCapture();
         }
     }
@@ -711,6 +714,7 @@ private:
         mAnalyzer.setAgc(mAgcEnabled, mAgcSpeed);
         mAnalyzer.setTrims(mBassTrim, mMidTrim, mTrebleTrim);
         mAnalyzer.setAutoLevel(mAutoLevel);
+        mAnalyzer.setNoiseReduction(mNoiseReduction);
     }
     void restartCapture() {
         mAnalyzer.configure(mSampleRate, 1024, 8);
@@ -794,6 +798,7 @@ private:
         mBassTrim = (float)toDouble(cfg("bass_trim"), 1.0);
         mMidTrim = (float)toDouble(cfg("mid_trim"), 1.0);
         mTrebleTrim = (float)toDouble(cfg("treble_trim"), 1.0);
+        mNoiseReduction = (float)toDouble(cfg("noise_reduction"), 1.0);
         std::string ich = cfg("input_channel");
         mChMode = (ich == "left") ? 1 : (ich == "right") ? 2 : 0;
         mChPerPix = std::min<long>(8, std::max<long>(1, toLong(cfg("channelsPerPixel"), 3)));
@@ -837,6 +842,8 @@ private:
     int mSampleRate = 44100;
     float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;
     float mSmoothing = 0.0f, mAgcSpeed = 0.5f, mBassTrim = 1.0f, mMidTrim = 1.0f, mTrebleTrim = 1.0f;
+    float mNoiseReduction = 1.0f;
+    std::string mNoiseLearnSeen;
     bool mAgcEnabled = true;
     int mChMode = 0;  // input channel: 0 mix, 1 left, 2 right
     long mChPerPix = 3, mStart = 1, mCount = 1500;

@@ -100,6 +100,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Noise gate</div><div><?php echo afNum('gate', '0.02', '0', '0.3', '0.005'); ?></div>
       <div class="lab">Beat sensitivity</div><div><?php echo afNum('sensitivity', '1.5', '1.05', '3', '0.05'); ?></div>
       <div class="lab">Auto-calibrate</div><div><button type="button" id="af-calib" onclick="afCalibrate(this)" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Calibrate (listen 5s)</button> <span class="help">play typical audio, then it sets gain &amp; noise gate</span></div>
+      <div class="lab">Calibrate silence</div><div><button type="button" id="af-calibsil" onclick="afCalibSilence(this)" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Calibrate silence (3s)</button> <span class="help">with NO music playing — captures &amp; removes the background noise</span></div>
     </div></div>
   </div>
 
@@ -111,6 +112,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Auto-gain (AGC) <?php echo afTog('agc_enabled', '1'); ?></div><div class="help">Normalize loudness to the room. Off = absolute (set with Input gain).</div>
       <div class="lab">AGC speed</div><div><?php echo afNum('agc_speed', '0.5', '0', '1', '0.05'); ?></div>
       <div class="lab">Smoothing</div><div><?php echo afNum('smoothing', '0', '0', '0.95', '0.05'); ?> <span class="help">eases the fall so reactions breathe</span></div>
+      <div class="lab">Noise reduction</div><div><?php echo afNum('noise_reduction', '1', '0', '1', '0.05'); ?> <span class="help">subtracts the captured background (Calibrate silence)</span></div>
       <div class="lab">Bass trim</div><div><?php echo afNum('bass_trim', '1', '0', '2', '0.05', '&times;'); ?></div>
       <div class="lab">Mid trim</div><div><?php echo afNum('mid_trim', '1', '0', '2', '0.05', '&times;'); ?></div>
       <div class="lab">Treble trim</div><div><?php echo afNum('treble_trim', '1', '0', '2', '0.05', '&times;'); ?></div>
@@ -206,6 +208,22 @@ function afUpload(){
   }).catch(function(){ el.textContent='upload failed'; el.style.color='#e24b4a'; });
 }
 afRefreshLayout();
+// silence calibration: capture the background-noise spectrum + set the gate above it
+function afCalibSilence(btn){
+  SetPluginSetting('pixelpulse','noise_learn',String(Date.now()),0,0);  // trigger the plugin's spectral learn
+  var samples=[], n=0, total=35, orig=btn.textContent; btn.disabled=true;
+  var iv=setInterval(function(){
+    var s=window.afLast; if(s&&typeof s.rawLevel==='number') samples.push(s.rawLevel);
+    n++; btn.textContent='listening (keep silent)… '+Math.max(0,Math.ceil((total-n)/10))+'s';
+    if(n<total) return;
+    clearInterval(iv); btn.disabled=false; btn.textContent=orig;
+    if(samples.length<5){ alert('No audio captured — make sure the device is open.'); return; }
+    var floor=afPctl(samples,0.9);
+    var gate=Math.min(0.3,Math.max(0.004, floor*1.3+0.004)); gate=Math.round(gate/0.005)*0.005; gate=Math.round(gate*1000)/1000;
+    SetPluginSetting('pixelpulse','gate',gate,0,0); afSetSlider('gate',gate);
+    alert('Silence calibrated:\n  background spectrum captured (noise reduction on)\n  noise gate set to '+gate);
+  },100);
+}
 // one-click auto-calibrate: listen ~5s, set noise gate from the floor and gain from the peaks
 function afSetSlider(k,v){ var i=document.getElementById('afn-'+k); if(i) i.value=v; var sp=document.getElementById('afnv-'+k); if(sp) sp.textContent=v+(sp.getAttribute('data-u')||''); }
 function afPctl(arr,p){ if(!arr.length) return 0; var a=arr.slice().sort(function(x,y){return x-y;}); return a[Math.min(a.length-1,Math.floor(p*a.length))]; }

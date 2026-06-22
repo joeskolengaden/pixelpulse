@@ -22,6 +22,9 @@ void AudioAnalyzer::configure(int sampleRate, int fftSize, int numBands) {
     mFreq.assign(nb, kiss_fft_cpx{});
     mMag.assign(nb, 0.f);
     mPrevMag.assign(nb, 0.f);
+    mNoiseMag.assign(nb, 0.f);
+    mNoiseAccum.assign(nb, 0.f);
+    mNoiseLearn = 0; mNoiseCount = 0; mHasNoise = false;
 
     // Hann window
     mHann.assign(mFftSize, 0.f);
@@ -91,6 +94,26 @@ void AudioAnalyzer::analyzeWindow() {
     const int nb = mFftSize / 2 + 1;
     for (int k = 0; k < nb; ++k)
         mMag[k] = std::sqrt(mFreq[k].r * mFreq[k].r + mFreq[k].i * mFreq[k].i);
+
+    // background-noise calibration: a new request starts a learn window; while
+    // learning we average the spectrum (the silent background); otherwise we
+    // subtract that profile so steady hum/noise doesn't drive the reactions.
+    float req = mNoiseLearnReq.exchange(-1.f, std::memory_order_relaxed);
+    if (req > 0.f) {
+        int hop = mFftSize / 2; if (hop < 1) hop = 1;
+        int wps = mSampleRate / hop; if (wps < 1) wps = 1;
+        mNoiseLearn = (int)(req * wps); mNoiseCount = 0;
+        std::fill(mNoiseAccum.begin(), mNoiseAccum.end(), 0.f);
+    }
+    if (mNoiseLearn > 0) {
+        for (int k = 0; k < nb; ++k) mNoiseAccum[k] += mMag[k];
+        if (++mNoiseCount, --mNoiseLearn == 0 && mNoiseCount > 0) {
+            for (int k = 0; k < nb; ++k) mNoiseMag[k] = mNoiseAccum[k] / mNoiseCount;
+            mHasNoise = true;
+        }
+    } else if (mHasNoise && mNoiseReduction > 0.f) {
+        for (int k = 0; k < nb; ++k) { mMag[k] -= mNoiseMag[k] * mNoiseReduction; if (mMag[k] < 0.f) mMag[k] = 0.f; }
+    }
 
     // spectral flux (sum of positive magnitude increases) -> onset
     float flux = 0.f;

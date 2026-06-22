@@ -35,6 +35,8 @@ public:
     void setAgc(bool on, float speed) { mAgcEnabled = on; mAgcSpeed = speed < 0.f ? 0.f : (speed > 1.f ? 1.f : speed); }
     void setTrims(float b, float m, float t) { mBassTrim = b; mMidTrim = m; mTrebleTrim = t; }
     void setAutoLevel(bool on) { mAutoLevel = on; }   // slow per-song input leveling
+    void setNoiseReduction(float r) { mNoiseReduction = r < 0.f ? 0.f : (r > 1.f ? 1.f : r); }
+    void startNoiseLearn(float seconds) { mNoiseLearnReq.store(seconds, std::memory_order_relaxed); }  // capture the silent background
 
     // Feed mono samples (any count); processes whole FFT windows as they fill.
     void pushSamples(const float* mono, int n);
@@ -63,6 +65,13 @@ private:
     std::vector<int> mBandLo, mBandHi;   // bin ranges per band
     float mBandPeak[MAX_BANDS] = {0};    // AGC running peak per band
     float mLevelPeak = 0.0001f;
+
+    // background-noise profile (spectral subtraction): captured during silence
+    std::vector<float> mNoiseMag, mNoiseAccum;
+    int mNoiseLearn = 0, mNoiseCount = 0;
+    bool mHasNoise = false;
+    float mNoiseReduction = 1.0f;
+    std::atomic<float> mNoiseLearnReq{-1.f};
 
     float mGain = 1.0f, mGate = 0.02f, mSensitivity = 1.5f;
     float mSmoothing = 0.0f, mAgcSpeed = 0.5f;
