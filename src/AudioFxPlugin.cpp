@@ -255,7 +255,13 @@ public:
 private:
     std::string cfg(const std::string& k) const {
         auto it = settings.find(k);
-        return it == settings.end() ? std::string() : it->second;
+        if (it == settings.end()) return std::string();
+        // FPP's settings API persists values quoted (key = "value") and
+        // reloadSettings() keeps the quotes. Strip them so numeric parsing and
+        // string comparisons work, and live edits apply without an fppd restart.
+        std::string v = it->second;
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
+        return v;
     }
 
     // Phase 2: spectrum/VU visualizer - generates pixels from the audio.
