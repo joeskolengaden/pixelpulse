@@ -95,8 +95,9 @@ const char* const kSpatialModes[] = {
     "gravimeter", "gravcenter", "waterfall", "djlight", "puddles",
     "fire2012", "aurora", "noise", "twinkle",
     "metaballs", "bursts", "drift", "lissajous",
-    "tunnel", "kaleido", "vortex", "rainbow", "breathe", "heartbeat", "lightning", "matrix"};
-const int kNumSpatialModes = 43;
+    "tunnel", "kaleido", "vortex", "rainbow", "breathe", "heartbeat", "lightning", "matrix",
+    "starburst", "pinwheel", "glitter", "tide", "radar", "bounce", "embers", "mirror"};
+const int kNumSpatialModes = 51;
 const int kWfT = 64;    // waterfall (spectrogram) history depth
 const int kHeatN = 32;  // fire2012 heat cells along height
 int spatialModeIndex(const std::string& s) {
@@ -109,19 +110,20 @@ const char* spatialModeName(int idx) {
 }
 // Curated order the auto-cycle walks through (1-based mode indices).
 const int kCycleList[] = {1, 5, 15, 23, 32, 7, 29, 17, 9, 26, 33, 16, 10, 28, 25, 20, 34, 30, 2, 18, 27, 19, 24, 35, 11, 31, 21, 4, 13, 22,
-                          36, 38, 37, 42, 39, 43, 40, 41};
-const int kCycleLen = 38;
+                          36, 38, 37, 42, 39, 43, 40, 41,
+                          44, 48, 45, 51, 47, 49, 50, 46};
+const int kCycleLen = 46;
 
 // "Smart" auto-DJ: the live music is classified into one of these categories,
 // each with a pool of the designs that suit it best (1-based mode indices).
 const char* const kMusicTypes[] = {"dance", "ambient", "bass", "bright", "groove"};
 const int kNumMusicTypes = 5;
 const int kSmartPools[5][6] = {
-    {1, 42, 26, 43, 23, 5},   // dance/EDM   : bloom, lightning, djlight, matrix, gravimeter, pulse
-    {29, 40, 30, 36, 31, 9},  // ambient     : aurora, breathe, noise, tunnel, twinkle, wave
-    {5, 41, 23, 28, 32, 36},  // bass-heavy  : pulse, heartbeat, gravimeter, fire2012, metaballs, tunnel
-    {8, 22, 39, 25, 33, 43},  // bright/pop  : sparkle, confetti, rainbow, waterfall, bursts, matrix
-    {7, 2, 37, 38, 16, 26},   // groove      : chase, spectrum, kaleido, vortex, bars, djlight
+    {44, 42, 26, 43, 49, 5},  // dance/EDM   : starburst, lightning, djlight, matrix, bounce, pulse
+    {29, 40, 47, 36, 31, 48}, // ambient     : aurora, breathe, tide, tunnel, twinkle, radar
+    {5, 41, 50, 28, 32, 47},  // bass-heavy  : pulse, heartbeat, embers, fire2012, metaballs, tide
+    {8, 46, 39, 51, 45, 43},  // bright/pop  : sparkle, glitter, rainbow, mirror, pinwheel, matrix
+    {7, 2, 37, 45, 16, 51},   // groove      : chase, spectrum, kaleido, pinwheel, bars, mirror
 };
 const int kSmartPoolLen = 6;
 
@@ -490,13 +492,33 @@ private:
         case 42: { float bx = 0.5f + 0.42f * std::sin(mScanPhase * 8.168f);  // lightning - treble-triggered bolt
             float on = (treble > 0.35f) ? (0.4f + 0.6f * treble) : 0.f, dd = std::fabs(p.nx - bx);
             br = std::exp(-std::pow(dd / 0.035f, 2.f)) * on; hue = 215.0; sat = 0.45; } break;
-        default: if (mode == 43) {  // matrix - falling code rain, per-column streams
+        case 43: {  // matrix - falling code rain, per-column streams
             const int cols = 24; int col = (int)(p.nx * cols); if (col < 0) col = 0; if (col >= cols) col = cols - 1;
             float hsh = std::fmod(std::sin(col * 12.9898f) * 43758.5453f, 1.f); if (hsh < 0) hsh += 1.f;
             float ph = std::fmod(mMatrixPhase * (0.5f + hsh) + hsh, 1.f), head = 1.1f - ph * 1.2f, dd = p.ny - head;
-            br = (dd >= 0.f && dd < 0.4f) ? (1.f - dd / 0.4f) * (0.4f + 0.6f * level) : 0.f; hue = 130.0; break;
-        }
-        { for (int k = 0; k < 8; ++k) {  // lissajous - a point tracing a curve with a trail
+            br = (dd >= 0.f && dd < 0.4f) ? (1.f - dd / 0.4f) * (0.4f + 0.6f * level) : 0.f; hue = 130.0; } break;
+        case 44: { if (mRingOn) { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f);  // starburst - spokes blast out on beats
+            float spoke = std::pow(0.5f + 0.5f * std::sin(ang * 8.f), 3.f);
+            br = spoke * std::exp(-std::pow((p.dist - mRingPhase * 0.8f) / 0.18f, 2.f)); }
+            br *= (0.5f + 0.5f * level); hue = 40.0 + 280.0 * bass; } break;
+        case 45: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) / 6.2832f + 0.5f;  // pinwheel - rotating hard sectors
+            float s = ang + mSpinPhase; s -= std::floor(s); int sect = (int)(s * 8.f);
+            br = (0.3f + 0.7f * level) * (0.6f + 0.4f * std::cos(p.dist * 6.f)); hue = sect * 45.0; } break;
+        case 46: { float h = std::fmod(std::sin(p.ch * 7.13f + std::floor(mWavePhase * 12.f) * 3.7f) * 43758.5453f, 1.f); if (h < 0) h += 1.f;  // glitter
+            br = (h > 0.97f - 0.4f * treble) ? 1.f : 0.f; br *= (0.5f + 0.5f * level); sat = 0.15; hue = 210.0; } break;
+        case 47: { float surf = 0.12f + 0.85f * mVu + 0.05f * std::sin(p.nx * 9.f + mWavePhase * 4.f);  // tide - wavy rising fill
+            br = (p.ny <= surf) ? (0.35f + 0.65f * (1.f - (surf - p.ny))) : 0.f; hue = 200.0 - 60.0 * p.ny; } break;
+        case 48: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) / 6.2832f + 0.5f;  // radar - sweeping ray with trail
+            float sweep = ang - mSpinPhase; sweep -= std::floor(sweep);
+            br = (sweep < 0.3f) ? (1.f - sweep / 0.3f) : 0.f; br *= (0.3f + 0.7f * level) * (0.35f + 0.65f * p.dist); hue = 120.0; } break;
+        case 49: { float by = 0.08f + 0.84f * std::fabs(std::sin(mScanPhase * 3.14159f));  // bounce - bar bounces on the beat
+            float dd = std::fabs(p.ny - by); br = std::exp(-std::pow(dd / 0.09f, 2.f)) * (0.4f + 0.6f * level); hue = 20.0 + 320.0 * by; } break;
+        case 50: { float h = std::fmod(std::sin(p.ch * 2.71f) * 43758.5453f, 1.f); if (h < 0) h += 1.f;  // embers - glowing motes rise
+            float y = std::fmod(h + mWavePhase * 0.4f, 1.f), dd = std::fabs(p.ny - y);
+            br = std::exp(-std::pow(dd / 0.05f, 2.f)) * (0.4f + 0.6f * bass) * (0.5f + 0.5f * level) * (1.f - 0.6f * y); hue = 32.0 - 32.0 * y; } break;
+        case 51: { int bi = (int)(std::fabs(p.nx - 0.5f) * 2.f * nb); if (bi < 0) bi = 0; if (bi >= nb) bi = nb - 1;  // mirror - spectrum from centre
+            float h = mAnalyzer.band(bi); br = (std::fabs(p.ny - 0.5f) * 2.f <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * std::fabs(p.nx - 0.5f) * 2.f; } break;
+        default: { for (int k = 0; k < 8; ++k) {  // lissajous - a point tracing a curve with a trail
             float ax = p.nx - mLissX[k], ay = p.ny - mLissY[k], d = ax * ax + ay * ay, a = (8 - k) / 8.f;
             float bb = std::exp(-d / 0.008f) * a; if (bb > br) br = bb; }
             br *= (0.5f + 0.5f * level); hue = 360.0 * std::fmod(mWavePhase * 0.2f, 1.f); } break;
