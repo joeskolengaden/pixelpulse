@@ -1,6 +1,6 @@
-# Pixel Pulse — live audio-reactive lighting for FPP
+# Pixel Pulse Audio — live audio-reactive lighting for FPP
 
-**Pixel Pulse** turns a live audio input into real-time lighting. It captures a
+**Pixel Pulse Audio** turns a live audio input into real-time lighting. It captures a
 USB sound card on your Falcon Player (Raspberry Pi / BeagleBone), analyzes the
 sound as it happens — loudness, frequency content, and beats — and modulates the
 pixel data each frame so your lights move with the music in the room. No

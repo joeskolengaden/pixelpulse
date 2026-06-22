@@ -1,8 +1,8 @@
 <?php
 // Menu entries for the pixelpulse plugin (FPP includes this per menu section).
 $menuEntries = Array(
-    Array('text' => 'Pixel Pulse', 'type' => 'content', 'page' => 'plugin.php', 'wrap' => 1),
-    Array('text' => 'Pixel Pulse - Help', 'type' => 'help', 'page' => 'https://github.com/joeskolengaden/pixelpulse', 'wrap' => 1)
+    Array('text' => 'Pixel Pulse Audio', 'type' => 'content', 'page' => 'plugin.php', 'wrap' => 1),
+    Array('text' => 'Pixel Pulse Audio - Help', 'type' => 'help', 'page' => 'https://github.com/joeskolengaden/pixelpulse', 'wrap' => 1)
 );
 foreach ($menuEntries as $entry) {
     if ($entry['type'] != $menu) continue;

@@ -1,6 +1,6 @@
 {
 	"repoName": "pixelpulse",
-	"name": "Pixel Pulse (live audio-reactive)",
+	"name": "Pixel Pulse Audio",
 	"author": "joeskolengaden",
 	"description": "Live audio-reactive lighting: captures a USB audio input, analyzes it in real time (level / bands / beat), and modulates the channel data so the lights react to the room audio. Phase 1: level->brightness, beat->flash.",
 	"homeURL": "https://github.com/joeskolengaden/pixelpulse",
