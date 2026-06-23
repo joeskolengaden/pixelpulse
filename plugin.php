@@ -182,6 +182,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Fresh look each change</div><div><label class="sw"><input type="checkbox" id="af-fresh-cb"<?php echo af_chk('fresh_per_change','1'); ?> onChange="<?php echo af_js('fresh_per_change', true); ?>"><span class="sl2"></span></label> <span class="help">rotate palette (hue shift) + vary motion each design change</span></div>
       <div class="lab">Minimum glow</div><div><?php echo afNum('min_glow', '8', '0', '50', '1', '%'); ?> <span class="help">never goes dark — keeps a floor of LEDs lit</span></div>
       <div class="lab">Idle animation</div><div><?php echo afNum('idle_design', '35', '0', '100', '5', '%'); ?> <span class="help">when silent, designs still show their form (real audio takes over)</span></div>
+      <div class="lab">No-blackout fallback</div><div><label class="sw"><input type="checkbox"<?php echo af_chk('quiet_fallback','1'); ?> onChange="<?php echo af_js('quiet_fallback', true); ?>"><span class="sl2"></span></label> <span class="help">when mic audio is too weak, cycle only high-coverage designs (colorwash/spin/plasma/aurora…)</span></div>
       <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
     </div></div>
   </div>

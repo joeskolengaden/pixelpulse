@@ -115,6 +115,12 @@ const int kCycleList[] = {1, 5, 15, 23, 32, 7, 29, 17, 9, 26, 33, 16, 10, 28, 25
                           44, 48, 45, 51, 47, 49, 50, 46,
                           52, 54, 59, 55, 53, 58, 56, 57};
 const int kCycleLen = 54;
+// High-coverage designs (>=55% of the layout lit even at silence, measured) used
+// as a no-blackout fallback when the mic audio is too weak. Order mixes washes
+// and fields for variety: colorwash, spin, noise, pulse, rainbow, djlight,
+// plasma, pinwheel, aurora, waterfall, breathe, wave, metaballs.
+const int kCoverList[] = {13, 15, 30, 5, 39, 26, 20, 45, 29, 25, 40, 9, 32};
+const int kCoverLen = 13;
 
 // "Smart" auto-DJ: the live music is classified into one of these categories,
 // each with a pool of the designs that suit it best (1-based mode indices).
@@ -615,6 +621,17 @@ private:
         } else if (mAutoCycle == 3) {
             target = smartSelect(dt);
         }
+        // Avoid blackout: when the audio is sustained-low (mic too quiet / between
+        // songs), override to a curated high-coverage design so the layout stays
+        // full instead of running a sparse design over near-silence.
+        if (mQuietFallback) {
+            if (mAvgLevel < 0.08f) mQuietMode = true; else if (mAvgLevel > 0.18f) mQuietMode = false;
+            if (mQuietMode) {
+                mCoverTimer += dt;
+                if (mCoverTimer >= (float)mCycleSecs) { mCoverTimer = 0.f; mCoverIdx++; }
+                target = kCoverList[mCoverIdx % kCoverLen];
+            }
+        }
         // Switch smoothly: wait for a beat to land the change on (or 2.5s max),
         // then crossfade old->new over a duration that's snappier on louder music.
         if (target != mCurMode && !mWantSwitch && mTransition >= 1.f) { mWantSwitch = true; mSwitchWait = 0.f; }
@@ -1021,6 +1038,7 @@ private:
         mFreshPerChange = toLong(cfg("fresh_per_change"), 1) != 0;
         mMinGlow = (float)std::min(0.5, std::max(0.0, toDouble(cfg("min_glow"), 8.0) / 100.0));
         mIdleDesign = std::min(100L, std::max(0L, toLong(cfg("idle_design"), 35)));
+        mQuietFallback = toLong(cfg("quiet_fallback"), 1) != 0;
         mAutoLevel = toLong(cfg("auto_level"), 1) != 0;
         mSpatialGroup = cfg("spatial_group");
     }
@@ -1104,6 +1122,7 @@ private:
     int mCtxNb = 8, mCtxDom = 0;
     bool mCtxBeatTrig = false;
     long mIdleDesign = 35; float mIdleBeatT = 0.f, mIdleBeatEnv = 0.f;  // self-animate designs when silent
+    bool mQuietFallback = true, mQuietMode = false; float mCoverTimer = 0.f; int mCoverIdx = 0;  // no-blackout high-coverage fallback
     // colour palette: -1 auto (HSV), else index into kPalettes
     int mPalette = -1, mSmartPalette = 6, mCtxPalette = -1;
     struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
