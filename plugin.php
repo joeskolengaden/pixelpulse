@@ -45,6 +45,12 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
 <div id="afx">
   <p class="intro">Live audio-reactive lighting. Pick your USB audio input, watch the meters confirm it's hearing sound, then turn on reactions. The lights modulate the playing design in real time (test patterns are never touched).</p>
 
+  <div class="card" style="margin-bottom:14px"><div class="body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px">
+    <button id="af-saverestart" onclick="afSaveRestart(this)" style="background:#2f9e6f;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer">Save &amp; Restart FPP</button>
+    <span style="font-size:12.5px;color:#6b7280">Settings save the moment you change them. Click here to restart FPP and apply everything cleanly (needed after changing the audio device while nothing is playing).</span>
+    <span id="af-saverestart-stat" style="font-size:13px;color:#2f9e6f;font-weight:600"></span>
+  </div></div>
+
   <div class="card">
     <div class="head"><span class="t">Live monitor</span><span class="stat"><span class="dot" id="af-dev"></span><span id="af-devtxt">checking…</span></span></div>
     <div class="body">
@@ -186,6 +192,23 @@ function afGpioPick(sel){ var o=sel.options[sel.selectedIndex]; if(!o||!o.value)
   SetPluginSetting('pixelpulse','switch_gpio',pp[0],0,0);
   SetPluginSetting('pixelpulse','switch_chip',pp[1],0,0);
   SetPluginSetting('pixelpulse','switch_line',pp[2],0,0); }
+// Save & Restart: settings already persist on change; this restarts fppd so
+// everything (incl. audio-device/capture changes made while idle) applies cleanly.
+function afSaveRestart(btn){
+  if(!confirm('Restart FPP now to apply all Pixel Pulse settings?\nThe lights will pause for a few seconds.')) return;
+  var stat=document.getElementById('af-saverestart-stat'), orig=btn.textContent;
+  btn.disabled=true; btn.textContent='Restarting…'; stat.textContent='restarting FPP…';
+  fetch('api/system/fppd/restart').catch(function(){});
+  setTimeout(function(){
+    var tries=0, iv=setInterval(function(){
+      tries++;
+      fetch('api/fppd/version',{cache:'no-store'}).then(function(r){return r.ok?r.text():Promise.reject();}).then(function(t){
+        if(!t) return Promise.reject();
+        clearInterval(iv); btn.disabled=false; btn.textContent=orig; stat.textContent='✓ applied'; setTimeout(function(){stat.textContent='';},5000);
+      }).catch(function(){ if(tries>25){ clearInterval(iv); btn.disabled=false; btn.textContent=orig; stat.textContent='still restarting — give it a moment'; } });
+    }, 1500);
+  }, 4000);
+}
 // auto design change: when turned on, the plugin self-runs the output loop so
 // designs cycle with no show — make sure that loop's files exist
 function afAutocycle(sel){
