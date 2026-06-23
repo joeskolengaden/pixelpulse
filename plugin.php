@@ -46,8 +46,8 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
   <p class="intro">Live audio-reactive lighting. Pick your USB audio input, watch the meters confirm it's hearing sound, then turn on reactions. The lights modulate the playing design in real time (test patterns are never touched).</p>
 
   <div class="card" style="margin-bottom:14px"><div class="body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px">
-    <button id="af-saverestart" onclick="afSaveRestart(this)" style="background:#2f9e6f;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer">Save &amp; Restart FPP</button>
-    <span style="font-size:12.5px;color:#6b7280">Settings save the moment you change them. Click here to restart FPP and apply everything cleanly (needed after changing the audio device while nothing is playing).</span>
+    <button id="af-saverestart" onclick="afSaveRestart(this)" style="background:#2f9e6f;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer">Save &amp; Restart fppd</button>
+    <span style="font-size:12.5px;color:#6b7280">Settings save the moment you change them. Click here to restart only the fppd daemon and apply everything cleanly (needed after changing the audio device while nothing is playing). Not a reboot — the web UI stays up.</span>
     <span id="af-saverestart-stat" style="font-size:13px;color:#2f9e6f;font-weight:600"></span>
   </div></div>
 
@@ -195,9 +195,9 @@ function afGpioPick(sel){ var o=sel.options[sel.selectedIndex]; if(!o||!o.value)
 // Save & Restart: settings already persist on change; this restarts fppd so
 // everything (incl. audio-device/capture changes made while idle) applies cleanly.
 function afSaveRestart(btn){
-  if(!confirm('Restart FPP now to apply all Pixel Pulse settings?\nThe lights will pause for a few seconds.')) return;
+  if(!confirm('Restart the fppd daemon now to apply all Pixel Pulse settings?\nThe lights pause for a few seconds. This is not a reboot.')) return;
   var stat=document.getElementById('af-saverestart-stat'), orig=btn.textContent;
-  btn.disabled=true; btn.textContent='Restarting…'; stat.textContent='restarting FPP…';
+  btn.disabled=true; btn.textContent='Restarting…'; stat.textContent='restarting fppd…';
   fetch('api/system/fppd/restart').catch(function(){});
   setTimeout(function(){
     var tries=0, iv=setInterval(function(){
