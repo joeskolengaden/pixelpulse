@@ -404,7 +404,7 @@ private:
             br = std::exp(-std::pow(dd / 0.10f, 2.f)) * (0.4f + 0.6f * level); hue = 200.0 + 120.0 * p.nx; } break;
         case 8: { float tw = std::sin(mWavePhase * 6.0f + p.nx * 53.0f + p.ny * 97.0f);
             br = (tw > (1.f - 0.5f * level - (mCtxBeatTrig ? 0.4f : 0.f))) ? 1.f : 0.f; hue = 180.0 + 120.0 * p.ny; } break;
-        case 9: { float w = 0.5f + 0.5f * std::sin((p.nx + p.ny) * 9.42f - mWavePhase * 6.2832f);
+        case 9: { float w = 0.5f + 0.5f * std::sin((p.nx + p.ny) * (5.f + 8.f * bass) - mWavePhase * 6.2832f);  // wave: bands tighten with bass
             br = w * (0.25f + 0.75f * level); hue = 260.0 * w; } break;
         case 10: { for (const auto& b : mBursts) if (b.on) { float rd = std::hypot(p.nx - b.x, p.ny - b.y);
             br += std::exp(-std::pow((rd - b.age * 0.9f) / 0.08f, 2.f)) * (1.f - b.age / 1.2f); }
@@ -428,8 +428,8 @@ private:
         case 20: { float v = std::sin(p.nx * 6.f + mWavePhase * 3.f) + std::sin(p.ny * 6.f + mWavePhase * 2.f)
                        + std::sin((p.nx + p.ny) * 5.f + mWavePhase); v = (v / 3.f + 1.f) * 0.5f;
             br = (0.3f + 0.7f * level) * (0.4f + 0.6f * v); hue = 360.0 * v; } break;
-        case 21: { float scan = 0.5f + 0.5f * std::sin(mScanPhase * 6.2832f); float dd = std::fabs(p.ny - scan);
-            br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0 + 30.0 * scan; } break;
+        case 21: { float scan = 0.5f + 0.5f * std::sin(mScanPhase * 6.2832f); float dd = std::fabs(p.ny - scan);  // scan: line thickens with volume
+            br = std::exp(-std::pow(dd / (0.035f + 0.08f * level), 2.f)) * (0.4f + 0.6f * level); hue = 0.0 + 30.0 * scan; } break;
         case 22: { float h1 = std::fmod(std::sin(p.ch * 12.9898f) * 43758.5453f, 1.f); if (h1 < 0) h1 += 1.f;  // confetti
             br = (h1 < 0.15f + 0.35f * beat) ? beat : 0.f;
             float h2 = std::fmod(std::sin(p.ch * 78.233f) * 43758.5453f, 1.f); if (h2 < 0) h2 += 1.f;
@@ -455,7 +455,7 @@ private:
             br = std::min(1.f, br); hue = 360.0 * p.nx; } break;
         case 28: { int hi = (int)(p.ny * (kHeatN - 1)); if (hi < 0) hi = 0; if (hi >= kHeatN) hi = kHeatN - 1;  // fire2012
             float h = mHeat[hi]; br = h; hue = 360.0 * h; } break;
-        case 29: { float v = 0.5f + 0.3f * std::sin(p.ny * 4.f + mWavePhase * 0.8f)  // aurora - slow layered waves
+        case 29: { float v = 0.5f + (0.3f + 0.3f * bass) * std::sin(p.ny * 4.f + mWavePhase * 0.8f)  // aurora: curtain amplitude swells with bass
                        + 0.2f * std::sin(p.nx * 3.f - mWavePhase * 0.5f) + 0.2f * std::sin((p.nx + p.ny) * 2.f + mWavePhase * 0.3f);
             if (v < 0) v = 0; if (v > 1) v = 1; br = (0.2f + 0.6f * v) * (0.55f + 0.45f * level); hue = 360.0 * v; } break;
         case 30: { float v = std::sin(p.nx * 8.f + mWavePhase * 2.f) * std::cos(p.ny * 7.f - mWavePhase * 1.5f)  // noise field
@@ -493,7 +493,7 @@ private:
             hue = 350.0; sat = 1.0 - 0.5 * thump; } break;
         case 42: { float bx = 0.5f + 0.42f * std::sin(mScanPhase * 8.168f);  // lightning - treble-triggered bolt
             float on = (treble > 0.35f) ? (0.4f + 0.6f * treble) : 0.f, dd = std::fabs(p.nx - bx);
-            br = std::exp(-std::pow(dd / 0.035f, 2.f)) * on; hue = 215.0; sat = 0.45; } break;
+            br = std::exp(-std::pow(dd / (0.02f + 0.05f * treble), 2.f)) * on; hue = 215.0; sat = 0.45; } break;  // lightning: bolt fires + thickens on treble
         case 43: {  // matrix - falling code rain, per-column streams
             const int cols = 24; int col = (int)(p.nx * cols); if (col < 0) col = 0; if (col >= cols) col = cols - 1;
             float hsh = std::fmod(std::sin(col * 12.9898f) * 43758.5453f, 1.f); if (hsh < 0) hsh += 1.f;
@@ -514,14 +514,14 @@ private:
             float sweep = ang - mSpinPhase; sweep -= std::floor(sweep);
             br = (sweep < 0.3f) ? (1.f - sweep / 0.3f) : 0.f; br *= (0.3f + 0.7f * level) * (0.35f + 0.65f * p.dist); hue = 120.0; } break;
         case 49: { float by = 0.08f + 0.84f * std::fabs(std::sin(mScanPhase * 3.14159f));  // bounce - bar bounces on the beat
-            float dd = std::fabs(p.ny - by); br = std::exp(-std::pow(dd / 0.09f, 2.f)) * (0.4f + 0.6f * level); hue = 20.0 + 320.0 * by; } break;
+            float dd = std::fabs(p.ny - by); br = std::exp(-std::pow(dd / (0.05f + 0.09f * level), 2.f)) * (0.4f + 0.6f * level); hue = 20.0 + 320.0 * by; } break;  // bounce: bar thickens with volume
         case 50: { float h = std::fmod(std::sin(p.ch * 2.71f) * 43758.5453f, 1.f); if (h < 0) h += 1.f;  // embers - glowing motes rise
             float y = std::fmod(h + mWavePhase * 0.4f, 1.f), dd = std::fabs(p.ny - y);
             br = std::exp(-std::pow(dd / 0.05f, 2.f)) * (0.4f + 0.6f * bass) * (0.5f + 0.5f * level) * (1.f - 0.6f * y); hue = 32.0 - 32.0 * y; } break;
         case 51: { int bi = (int)(std::fabs(p.nx - 0.5f) * 2.f * nb); if (bi < 0) bi = 0; if (bi >= nb) bi = nb - 1;  // mirror - spectrum from centre
             float h = mAnalyzer.band(bi); br = (std::fabs(p.ny - 0.5f) * 2.f <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * std::fabs(p.nx - 0.5f) * 2.f; } break;
         case 52: { float a = p.nx * 9.f + mWavePhase * 3.f;  // dna - two intertwining strands
-            float s1 = 0.5f + 0.4f * std::sin(a), s2 = 0.5f - 0.4f * std::sin(a);
+            float amp = 0.22f + 0.28f * bass, s1 = 0.5f + amp * std::sin(a), s2 = 0.5f - amp * std::sin(a);  // dna: helix opens with bass
             float d1 = std::fabs(p.ny - s1), d2 = std::fabs(p.ny - s2);
             br = (std::exp(-std::pow(d1 / 0.06f, 2.f)) + std::exp(-std::pow(d2 / 0.06f, 2.f))) * (0.4f + 0.6f * level);
             hue = (d1 < d2) ? 200.0 : 320.0; } break;
@@ -529,7 +529,7 @@ private:
             bool on = ((cx + cy + mBeatCount) & 1); int bi = (cx + cy) % std::max(1, nb);
             br = on ? (0.2f + 0.8f * mAnalyzer.band(bi)) : 0.f; hue = 60.0 * ((cx + cy) % 6); } break;
         case 54: { float eye = 0.5f + 0.46f * std::sin(mScanPhase * 6.2832f);  // cylon - horizontal sweeping eye
-            float dd = std::fabs(p.nx - eye); br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0; } break;
+            float dd = std::fabs(p.nx - eye); br = std::exp(-std::pow(dd / (0.035f + 0.08f * level), 2.f)) * (0.4f + 0.6f * level); hue = 0.0; } break;  // cylon: eye thickens with volume
         case 55: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) / 6.2832f + 0.5f;  // vuspiral - level fills a spiral
             float sp = ang * 0.25f + p.dist; sp -= std::floor(sp);
             br = (sp <= mVu) ? (0.4f + 0.6f * (1.f - (mVu - sp))) : 0.f; hue = 360.0 * sp; } break;
@@ -540,7 +540,7 @@ private:
         case 58: { float w = mCometPhase, dd = p.nx - w; if (dd < 0.f) dd += 1.f;  // wipe - colour sweep with trail
             br = std::pow(1.f - dd, 2.f) * (0.35f + 0.65f * level); hue = std::fmod(mCometPhase * 360.0 + 110.0 * p.ny, 360.0); } break;
         case 59: { float r = 0.f; for (int k = 0; k < 3; ++k) {  // ribbons - flowing horizontal bands
-                float yc = 0.25f + 0.25f * k + 0.12f * std::sin(p.nx * 6.f + mWavePhase * (2.f + k) + k);
+                float yc = 0.25f + 0.25f * k + (0.05f + 0.16f * bass) * std::sin(p.nx * 6.f + mWavePhase * (2.f + k) + k);  // ribbons: sway grows with bass
                 float e = std::exp(-std::pow((p.ny - yc) / 0.05f, 2.f)); if (e > r) r = e; }
             br = r * (0.35f + 0.65f * level); hue = std::fmod(mWavePhase * 30.0 + 120.0 * p.ny, 360.0); } break;
         default: { for (int k = 0; k < 8; ++k) {  // lissajous - a point tracing a curve with a trail

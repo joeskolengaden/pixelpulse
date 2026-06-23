@@ -172,7 +172,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous','tunnel','kaleido','vortex','rainbow','breathe','heartbeat','lightning','matrix','starburst','pinwheel','glitter','tide','radar','bounce','embers','mirror','dna','blocks','cylon','vuspiral','fireflies','strobepop','wipe','ribbons') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">59 styles, driven by physical LED position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);afShowReact(this.value);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous','tunnel','kaleido','vortex','rainbow','breathe','heartbeat','lightning','matrix','starburst','pinwheel','glitter','tide','radar','bounce','embers','mirror','dna','blocks','cylon','vuspiral','fireflies','strobepop','wipe','ribbons') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">59 styles, driven by physical LED position</span><div id="af-modedesc" class="help" style="margin-top:4px;color:#2f9e6f;font-weight:600"></div></div>
       <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
       <div class="lab">With playback</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_blend',this.value,0,0);"><?php foreach (array('replace'=>'replace (override)','overlay'=>'overlay (keep brighter)','add'=>'add (brighten)','modulate'=>'modulate (pulse the show)') as $v=>$lbl) echo "<option value='$v'" . (af_get('spatial_blend','replace')===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">override the sequence, or blend with it</span></div>
       <div class="lab">Auto design change</div><div><select onChange="afAutocycle(this);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music · when on, designs cycle on their own (no show needed)</span></div>
@@ -319,6 +319,30 @@ function afPalCol(name,t,br){ var P=afPals[name]; if(!P) return null; t-=Math.fl
   var a=P[i], b=P[i<P.length-1?i+1:i], span=b[0]-a[0], f=span>1e-4?(t-a[0])/span:0; if(f<0)f=0; if(f>1)f=1;
   return 'rgb('+Math.round((a[1]+(b[1]-a[1])*f)*br)+','+Math.round((a[2]+(b[2]-a[2])*f)*br)+','+Math.round((a[3]+(b[3]-a[3])*f)*br)+')'; }
 var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0,beatCount:0,hueShift:0,varSpeed:1,varDir:1,lastMode:''};
+// what each design reacts to (the audio feature -> visual parameter), shown in the UI
+var afReact={
+ bloom:'beat fires the ring · bass→hue · volume→brightness', spectrum:'each column brightness = its frequency band', vu:'fill height = volume',
+ radial:'rings by frequency (centre=bass, edge=treble)', pulse:'whole-display brightness = volume · hue = bass/treble', spike:'flashes on every beat · hue=bass',
+ chase:'runner speed = volume', sparkle:'sparkle density = volume · beats burst it', wave:'band spacing tightens with bass · brightness=volume',
+ fireworks:'bursts launch on beats · spread=bass', rain:'a drop falls on every beat', strobe:'white strobe on the beat',
+ colorwash:'brightness=volume · hue = loudest frequency', grow:'disc grows from centre with volume', spin:'rotation speed & brightness = volume',
+ bars:'spectrum bars — each height = its band', ripple:'ripple speed & brightness = volume', fire:'flame height = bass',
+ comet:'comet speed = volume', plasma:'brightness = volume (colour flow)', scan:'scan line thickens with volume',
+ confetti:'confetti pops on beats', gravimeter:'bar height = volume (gravity + peak hold)', gravcenter:'centre-out bar height = volume',
+ waterfall:'scrolling spectrogram of frequencies', djlight:'3 rings: bass / mid / treble', puddles:'puddles bloom on beats',
+ fire2012:'flame intensity & sparks = bass', aurora:'curtain amplitude swells with bass', noise:'brightness = volume (noise field)',
+ twinkle:'twinkle density & brightness = volume', metaballs:'blob size = volume', bursts:'spoke brightness = volume',
+ drift:'spiral-arm brightness = volume', lissajous:'tracer brightness = volume', tunnel:'ring flow speed & brightness = volume',
+ kaleido:'brightness = volume (kaleidoscope)', vortex:'spin speed & brightness = volume', rainbow:'scroll speed & brightness = volume',
+ breathe:'brightness = volume (slow swell)', heartbeat:'thump locked to BPM · brightness=volume', lightning:'bolt fires & thickens on treble',
+ matrix:'fall speed & brightness = volume', starburst:'spokes blast on beats · hue=bass', pinwheel:'brightness = volume (rotating)',
+ glitter:'white sparkles fire on treble', tide:'tide level = volume', radar:'sweep brightness = volume',
+ bounce:'bar bounces on beat · thickens with volume', embers:'ember density = bass', mirror:'mirrored spectrum bars (height=frequency)',
+ dna:'helix opens wider with bass', blocks:'cells = frequency · flips on beat', cylon:'eye thickens with volume',
+ vuspiral:'spiral fills with volume', fireflies:'firefly density & brightness = volume', strobepop:'colour strobe on beats (new hue each)',
+ wipe:'wipe speed & brightness = volume', ribbons:'ribbon sway grows with bass'};
+function afShowReact(m){ var e=document.getElementById('af-modedesc'); if(e) e.textContent='reacts: '+(afReact[m]||'volume → brightness'); }
+try{ afShowReact((document.getElementById('af-spatialmode')||{}).value||'bloom'); }catch(e){}
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
   if(!afPts) return;
@@ -336,7 +360,7 @@ function afPrevLoop(){
   // fresh look per design change: rotate palette + vary motion (mirror of the engine)
   var afFresh=!(document.getElementById('af-fresh-cb')) || document.getElementById('af-fresh-cb').checked;
   var afMinG=(parseFloat((document.getElementById('afn-min_glow')||{}).value)||0)/100;
-  if(mode!==afSt.lastMode){ afSt.lastMode=mode; if(afFresh){ afSt.hueShift=(afSt.hueShift+80+Math.random()*90)%360; afSt.varSpeed=0.7+Math.random()*0.8; afSt.varDir=(Math.random()<0.5)?1:-1; } }
+  if(mode!==afSt.lastMode){ afSt.lastMode=mode; afShowReact(mode); if(afFresh){ afSt.hueShift=(afSt.hueShift+80+Math.random()*90)%360; afSt.varSpeed=0.7+Math.random()*0.8; afSt.varDir=(Math.random()<0.5)?1:-1; } }
   var vs=afFresh?afSt.varSpeed:1, vd=afFresh?afSt.varDir:1;
   if(afFresh){ afSt.hueShift=(afSt.hueShift+dt*5)%360; }
   afSt.chase+=dt*(0.12+0.5*lvl)*vs; afSt.wave+=dt*0.6*vs;
@@ -380,7 +404,7 @@ function afPrevLoop(){
       case 'spike': br=beat; hue=40+200*bass; break;
       case 'chase': dd=Math.abs(nx-chase); dd=Math.min(dd,1-dd); br=Math.exp(-Math.pow(dd/0.10,2))*(0.4+0.6*lvl); hue=200+120*nx; break;
       case 'sparkle': tw=Math.sin(afSt.wave*6+nx*53+ny*97); br=(tw>(1-0.5*lvl-(trig?0.4:0)))?1:0; hue=180+120*ny; break;
-      case 'wave': wv=0.5+0.5*Math.sin((nx+ny)*9.42-afSt.wave*6.2832); br=wv*(0.25+0.75*lvl); hue=260*wv; break;
+      case 'wave': wv=0.5+0.5*Math.sin((nx+ny)*(5+8*bass)-afSt.wave*6.2832); br=wv*(0.25+0.75*lvl); hue=260*wv; break;
       case 'fireworks': afSt.bursts.forEach(function(bb){ var rd=Math.hypot(nx-bb.x,ny-bb.y); br+=Math.exp(-Math.pow((rd-bb.age*0.9)/0.08,2))*(1-bb.age/1.2); }); br=Math.min(1,br)*(0.5+0.5*lvl); hue=30+300*bass; break;
       case 'rain': afSt.rain.forEach(function(rf){ if(rf>=0) br+=Math.exp(-Math.pow((ny-rf)/0.10,2)); }); br=Math.min(1,br); hue=200; break;
       case 'strobe': br=(beat>0.5)?1:0; sat=0; break;
@@ -392,7 +416,7 @@ function afPrevLoop(){
       case 'fire': var fl=0.55+0.45*Math.sin(afSt.wave*8+nx*40+ny*25), fb=(1-ny)*(1-ny); br=fb*(0.35+0.65*bass)*fl*(0.5+0.5*lvl); hue=50*Math.min(1,br*1.3); break;
       case 'comet': var cd=afSt.comet-nx; if(cd<0)cd+=1; br=(cd<0.35)?(1-cd/0.35)*(0.4+0.6*lvl):0; hue=190+90*cd; break;
       case 'plasma': var pv=Math.sin(nx*6+afSt.wave*3)+Math.sin(ny*6+afSt.wave*2)+Math.sin((nx+ny)*5+afSt.wave); pv=(pv/3+1)*0.5; br=(0.3+0.7*lvl)*(0.4+0.6*pv); hue=360*pv; break;
-      case 'scan': var sc=0.5+0.5*Math.sin(afSt.scan*6.2832), sd=Math.abs(ny-sc); br=Math.exp(-Math.pow(sd/0.07,2))*(0.4+0.6*lvl); hue=30*sc; break;
+      case 'scan': var sc=0.5+0.5*Math.sin(afSt.scan*6.2832), sd=Math.abs(ny-sc); br=Math.exp(-Math.pow(sd/(0.035+0.08*lvl),2))*(0.4+0.6*lvl); hue=30*sc; break;
       case 'confetti': var c1=Math.sin(i*12.9898)*43758.5453; c1-=Math.floor(c1); br=(c1<0.15+0.35*beat)?beat:0; var c2=Math.sin(i*78.233)*43758.5453; c2-=Math.floor(c2); hue=360*c2; break;
       case 'gravimeter': br=(ny<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-ny))):0; if(Math.abs(ny-afSt.vuPeak)<0.02)br=1; hue=360*ny; break;
       case 'gravcenter': var dc=Math.abs(ny-0.5)*2; br=(dc<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-dc))):0; if(Math.abs(dc-afSt.vuPeak)<0.03)br=1; hue=360*dc; break;
@@ -400,7 +424,7 @@ function afPrevLoop(){
       case 'djlight': var e; if(dist<0.34){e=bass;hue=0;}else if(dist<0.67){e=s.mid||0;hue=120;}else{e=treble;hue=240;} br=0.12+0.88*e; break;
       case 'puddles': afSt.puddles.forEach(function(pu){ var rd=Math.hypot(nx-pu.x,ny-pu.y), radius=pu.age*0.3; if(radius>0&&rd<radius) br+=(1-rd/radius)*(1-pu.age/1.4); }); br=Math.min(1,br); hue=360*nx; break;
       case 'fire2012': var hi=Math.min(afSt.heat.length-1,Math.floor(ny*(afSt.heat.length-1))); var hh2=afSt.heat[hi]||0; br=hh2; hue=360*hh2; break;
-      case 'aurora': var av=0.5+0.3*Math.sin(ny*4+afSt.wave*0.8)+0.2*Math.sin(nx*3-afSt.wave*0.5)+0.2*Math.sin((nx+ny)*2+afSt.wave*0.3); if(av<0)av=0; if(av>1)av=1; br=(0.2+0.6*av)*(0.55+0.45*lvl); hue=360*av; break;
+      case 'aurora': var av=0.5+(0.3+0.3*bass)*Math.sin(ny*4+afSt.wave*0.8)+0.2*Math.sin(nx*3-afSt.wave*0.5)+0.2*Math.sin((nx+ny)*2+afSt.wave*0.3); if(av<0)av=0; if(av>1)av=1; br=(0.2+0.6*av)*(0.55+0.45*lvl); hue=360*av; break;
       case 'noise': var nv=Math.sin(nx*8+afSt.wave*2)*Math.cos(ny*7-afSt.wave*1.5)+Math.sin((nx*ny)*12+afSt.wave); nv=(nv+2)*0.25; br=(0.25+0.75*lvl)*(0.4+0.6*nv); hue=360*nv; break;
       case 'twinkle': var tw2=Math.sin(afSt.wave*1.8+i*2.399); var on2=tw2>0.5?(tw2-0.5)*2:0; br=on2*(0.5+0.5*lvl); var th=Math.sin(i*0.0173)*43758.5453; th-=Math.floor(th); hue=360*th; break;
       case 'metaballs': var mf=0; for(var mk=0;mk<3;mk++){ var ax=nx-afSt.ballX[mk], ay=ny-afSt.ballY[mk]; mf+=afSt.ballR/(ax*ax+ay*ay+0.004); } br=mf>1?1:(mf<0.25?0:(mf-0.25)/0.75); hue=360*nx; break;
@@ -412,24 +436,24 @@ function afPrevLoop(){
       case 'rainbow': var rs=nx+ny*0.25-afSt.comet; rs-=Math.floor(rs); br=0.45+0.55*lvl; hue=360*rs; break;
       case 'breathe': var bb2=0.5+0.5*Math.sin(afSt.wave*1.2); br=(0.2+0.8*lvl)*(0.45+0.55*bb2)*(1-0.35*dist); hue=(afSt.wave*18)%360; break;
       case 'heartbeat': var hph=afSt.heart, ht=Math.exp(-Math.pow(hph/0.05,2))+0.6*Math.exp(-Math.pow((hph-0.16)/0.05,2)); if(ht>1)ht=1; br=ht*(0.4+0.6*lvl)*(1-0.25*dist); hue=350; sat=1-0.5*ht; break;
-      case 'lightning': var lbx=0.5+0.42*Math.sin(afSt.scan*8.168), lon=(treble>0.35)?(0.4+0.6*treble):0, ldd=Math.abs(nx-lbx); br=Math.exp(-Math.pow(ldd/0.035,2))*lon; hue=215; sat=0.45; break;
+      case 'lightning': var lbx=0.5+0.42*Math.sin(afSt.scan*8.168), lon=(treble>0.35)?(0.4+0.6*treble):0, ldd=Math.abs(nx-lbx); br=Math.exp(-Math.pow(ldd/(0.02+0.05*treble),2))*lon; hue=215; sat=0.45; break;
       case 'matrix': var mcol=Math.min(23,Math.floor(nx*24)); var mh=Math.sin(mcol*12.9898)*43758.5453; mh-=Math.floor(mh); var mph=(afSt.matrix*(0.5+mh)+mh)%1; var mhead=1.1-mph*1.2, md=ny-mhead; br=(md>=0&&md<0.4)?(1-md/0.4)*(0.4+0.6*lvl):0; hue=130; break;
       case 'starburst': if(afSt.ring){ var sba=Math.atan2(ny-0.5,nx-0.5); var spk=Math.pow(0.5+0.5*Math.sin(sba*8),3); br=spk*Math.exp(-Math.pow((dist-afSt.ringPh*0.8)/0.18,2)); } br*=(0.5+0.5*lvl); hue=40+280*bass; break;
       case 'pinwheel': var pa=Math.atan2(ny-0.5,nx-0.5)/6.2832+0.5, ps=pa+afSt.spin; ps-=Math.floor(ps); var psect=Math.floor(ps*8); br=(0.3+0.7*lvl)*(0.6+0.4*Math.cos(dist*6)); hue=psect*45; break;
       case 'glitter': var gh=Math.sin(i*7.13+Math.floor(afSt.wave*12)*3.7)*43758.5453; gh-=Math.floor(gh); br=(gh>0.97-0.4*treble)?1:0; br*=(0.5+0.5*lvl); sat=0.15; hue=210; break;
       case 'tide': var tsurf=0.12+0.85*afSt.vu+0.05*Math.sin(nx*9+afSt.wave*4); br=(ny<=tsurf)?(0.35+0.65*(1-(tsurf-ny))):0; hue=200-60*ny; break;
       case 'radar': var ra=Math.atan2(ny-0.5,nx-0.5)/6.2832+0.5, rsw=ra-afSt.spin; rsw-=Math.floor(rsw); br=(rsw<0.3)?(1-rsw/0.3):0; br*=(0.3+0.7*lvl)*(0.35+0.65*dist); hue=120; break;
-      case 'bounce': var bby=0.08+0.84*Math.abs(Math.sin(afSt.scan*3.14159)), bdd=Math.abs(ny-bby); br=Math.exp(-Math.pow(bdd/0.09,2))*(0.4+0.6*lvl); hue=20+320*bby; break;
+      case 'bounce': var bby=0.08+0.84*Math.abs(Math.sin(afSt.scan*3.14159)), bdd=Math.abs(ny-bby); br=Math.exp(-Math.pow(bdd/(0.05+0.09*lvl),2))*(0.4+0.6*lvl); hue=20+320*bby; break;
       case 'embers': var eh=Math.sin(i*2.71)*43758.5453; eh-=Math.floor(eh); var ey=(eh+afSt.wave*0.4)%1, edd=Math.abs(ny-ey); br=Math.exp(-Math.pow(edd/0.05,2))*(0.4+0.6*bass)*(0.5+0.5*lvl)*(1-0.6*ey); hue=32-32*ey; break;
       case 'mirror': var mbi=Math.min(nb-1,Math.floor(Math.abs(nx-0.5)*2*nb)), mhh=bands[mbi]||0; br=(Math.abs(ny-0.5)*2<=mhh)?(0.4+0.6*mhh):0; hue=280*Math.abs(nx-0.5)*2; break;
-      case 'dna': var da=nx*9+afSt.wave*3, ds1=0.5+0.4*Math.sin(da), ds2=0.5-0.4*Math.sin(da), dd1=Math.abs(ny-ds1), dd2=Math.abs(ny-ds2); br=(Math.exp(-Math.pow(dd1/0.06,2))+Math.exp(-Math.pow(dd2/0.06,2)))*(0.4+0.6*lvl); hue=(dd1<dd2)?200:320; break;
+      case 'dna': var da=nx*9+afSt.wave*3, damp=0.22+0.28*bass, ds1=0.5+damp*Math.sin(da), ds2=0.5-damp*Math.sin(da), dd1=Math.abs(ny-ds1), dd2=Math.abs(ny-ds2); br=(Math.exp(-Math.pow(dd1/0.06,2))+Math.exp(-Math.pow(dd2/0.06,2)))*(0.4+0.6*lvl); hue=(dd1<dd2)?200:320; break;
       case 'blocks': var bcx=Math.floor(nx*6), bcy=Math.floor(ny*6), bon=((bcx+bcy+afSt.beatCount)&1), bbi=(bcx+bcy)%Math.max(1,nb); br=bon?(0.2+0.8*(bands[bbi]||0)):0; hue=60*((bcx+bcy)%6); break;
-      case 'cylon': var cye=0.5+0.46*Math.sin(afSt.scan*6.2832), cdd=Math.abs(nx-cye); br=Math.exp(-Math.pow(cdd/0.07,2))*(0.4+0.6*lvl); hue=0; break;
+      case 'cylon': var cye=0.5+0.46*Math.sin(afSt.scan*6.2832), cdd=Math.abs(nx-cye); br=Math.exp(-Math.pow(cdd/(0.035+0.08*lvl),2))*(0.4+0.6*lvl); hue=0; break;
       case 'vuspiral': var vsa=Math.atan2(ny-0.5,nx-0.5)/6.2832+0.5, vsp=vsa*0.25+dist; vsp-=Math.floor(vsp); br=(vsp<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-vsp))):0; hue=360*vsp; break;
       case 'fireflies': var fh=Math.sin(i*4.19)*43758.5453; fh-=Math.floor(fh); var ftw=Math.sin(afSt.wave*0.9+fh*31.4); br=(ftw>0.75)?(ftw-0.75)*4:0; br*=(0.5+0.5*lvl); var fh2=Math.sin(i*0.07)*43758.5453; fh2-=Math.floor(fh2); hue=80+60*fh2; break;
       case 'strobepop': br=(beat>0.5)?1:0; hue=((afSt.beatCount*0.27)%1)*360; break;
       case 'wipe': var ww=afSt.comet, wdd=nx-ww; if(wdd<0)wdd+=1; br=Math.pow(1-wdd,2)*(0.35+0.65*lvl); hue=(afSt.comet*360+110*ny)%360; break;
-      case 'ribbons': var rr=0; for(var rk=0;rk<3;rk++){ var ryc=0.25+0.25*rk+0.12*Math.sin(nx*6+afSt.wave*(2+rk)+rk); var re=Math.exp(-Math.pow((ny-ryc)/0.05,2)); if(re>rr)rr=re; } br=rr*(0.35+0.65*lvl); hue=(afSt.wave*30+120*ny)%360; break;
+      case 'ribbons': var rr=0; for(var rk=0;rk<3;rk++){ var ryc=0.25+0.25*rk+(0.05+0.16*bass)*Math.sin(nx*6+afSt.wave*(2+rk)+rk); var re=Math.exp(-Math.pow((ny-ryc)/0.05,2)); if(re>rr)rr=re; } br=rr*(0.35+0.65*lvl); hue=(afSt.wave*30+120*ny)%360; break;
       default: for(var lk2=0;lk2<8;lk2++){ var lax=nx-afSt.lissX[lk2], lay=ny-afSt.lissY[lk2], ld=lax*lax+lay*lay, la=(8-lk2)/8; var lb=Math.exp(-ld/0.008)*la; if(lb>br)br=lb; } br*=(0.5+0.5*lvl); hue=360*((afSt.wave*0.2)%1); break;
     }
     if(afFresh) hue+=afSt.hueShift;
