@@ -496,7 +496,8 @@ private:
             float bolt = std::exp(-std::pow((p.nx - bx) / w, 2.f));
             float b2 = 0.6f * std::exp(-std::pow((p.nx - bx2) / w, 2.f)); if (b2 > bolt) bolt = b2;
             float flick = 0.6f + 0.4f * std::sin(p.ny * 40.f + mWavePhase * 30.f);
-            br = bolt * (0.2f + 0.8f * treble) * flick; hue = 215.0; sat = 0.45; } break;  // lightning: bolt fires + thickens on treble
+            float field = (0.06f + 0.20f * treble) * (0.45f + 0.55f * std::sin(p.ny * 28.f + p.nx * 19.f + mWavePhase * 22.f));  // faint electric haze, brighter on treble
+            br = bolt * (0.2f + 0.8f * treble) * flick; if (field > br) br = field; hue = 215.0; sat = 0.45; } break;  // lightning: bolt fires + thickens on treble
         case 43: {  // matrix - falling code rain, per-column streams
             const int cols = 24; int col = (int)(p.nx * cols); if (col < 0) col = 0; if (col >= cols) col = cols - 1;
             float hsh = std::fmod(std::sin(col * 12.9898f) * 43758.5453f, 1.f); if (hsh < 0) hsh += 1.f;
