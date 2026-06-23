@@ -488,12 +488,15 @@ private:
         case 40: { float b = 0.5f + 0.5f * std::sin(mWavePhase * 1.2f);  // breathe - calm whole-layout swell
             br = (0.2f + 0.8f * level) * (0.45f + 0.55f * b) * (1.f - 0.35f * p.dist); hue = std::fmod(mWavePhase * 18.0, 360.0); } break;
         case 41: { float ph = mHeartPhase;  // heartbeat - BPM-synced double thump
-            float thump = std::exp(-std::pow(ph / 0.05f, 2.f)) + 0.6f * std::exp(-std::pow((ph - 0.16f) / 0.05f, 2.f));
-            if (thump > 1.f) thump = 1.f; br = thump * (0.4f + 0.6f * level) * (1.f - 0.25f * p.dist);
+            float thump = std::exp(-std::pow(ph / 0.09f, 2.f)) + 0.7f * std::exp(-std::pow((ph - 0.18f) / 0.09f, 2.f));
+            if (thump > 1.f) thump = 1.f; br = (0.15f + 0.85f * thump) * (0.35f + 0.65f * level) * (1.f - 0.25f * p.dist);
             hue = 350.0; sat = 1.0 - 0.5 * thump; } break;
-        case 42: { float bx = 0.5f + 0.42f * std::sin(mScanPhase * 8.168f);  // lightning - treble-triggered bolt
-            float on = (treble > 0.35f) ? (0.4f + 0.6f * treble) : 0.f, dd = std::fabs(p.nx - bx);
-            br = std::exp(-std::pow(dd / (0.02f + 0.05f * treble), 2.f)) * on; hue = 215.0; sat = 0.45; } break;  // lightning: bolt fires + thickens on treble
+        case 42: { float bx = 0.5f + 0.42f * std::sin(mScanPhase * 8.168f);  // lightning - electric bolts driven by treble
+            float bx2 = 0.5f + 0.42f * std::sin(mScanPhase * 8.168f + 2.1f), w = 0.025f + 0.05f * treble;
+            float bolt = std::exp(-std::pow((p.nx - bx) / w, 2.f));
+            float b2 = 0.6f * std::exp(-std::pow((p.nx - bx2) / w, 2.f)); if (b2 > bolt) bolt = b2;
+            float flick = 0.6f + 0.4f * std::sin(p.ny * 40.f + mWavePhase * 30.f);
+            br = bolt * (0.2f + 0.8f * treble) * flick; hue = 215.0; sat = 0.45; } break;  // lightning: bolt fires + thickens on treble
         case 43: {  // matrix - falling code rain, per-column streams
             const int cols = 24; int col = (int)(p.nx * cols); if (col < 0) col = 0; if (col >= cols) col = cols - 1;
             float hsh = std::fmod(std::sin(col * 12.9898f) * 43758.5453f, 1.f); if (hsh < 0) hsh += 1.f;
@@ -643,9 +646,9 @@ private:
         if (mFireAccum >= 0.03f) { mFireAccum -= 0.03f;
             for (int i = 0; i < kHeatN; ++i) { float cl = (std::rand() % 100) / 100.f * (0.5f / kHeatN + 0.015f); mHeat[i] -= cl; if (mHeat[i] < 0.f) mHeat[i] = 0.f; }
             for (int i = kHeatN - 1; i >= 2; --i) mHeat[i] = (mHeat[i - 1] + mHeat[i - 2] + mHeat[i - 2]) / 3.f;
-            if ((std::rand() % 100) / 100.f < 0.5f + 0.5f * bass) {
+            if ((std::rand() % 100) / 100.f < 0.15f + 0.85f * bass) {
                 int y = std::rand() % (kHeatN / 4 + 1);
-                mHeat[y] += 0.5f + 0.5f * ((std::rand() % 100) / 100.f) * (0.5f + 0.5f * bass);
+                mHeat[y] += (0.3f + 0.7f * bass) * (0.5f + 0.5f * ((std::rand() % 100) / 100.f));
                 if (mHeat[y] > 1.f) mHeat[y] = 1.f;
             }
         }

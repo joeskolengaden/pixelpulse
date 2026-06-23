@@ -383,7 +383,7 @@ function afPrevLoop(){
   afSt.fireAccum+=dt; if(afSt.fireAccum>=0.03){ afSt.fireAccum-=0.03; var HN=afSt.heat.length;
     for(var hk=0;hk<HN;hk++){ afSt.heat[hk]-=Math.random()*(0.5/HN+0.015); if(afSt.heat[hk]<0)afSt.heat[hk]=0; }
     for(var hk2=HN-1;hk2>=2;hk2--) afSt.heat[hk2]=(afSt.heat[hk2-1]+afSt.heat[hk2-2]+afSt.heat[hk2-2])/3;
-    if(Math.random()<0.5+0.5*bass){ var hy=Math.floor(Math.random()*(HN/4+1)); afSt.heat[hy]+=0.5+0.5*Math.random()*(0.5+0.5*bass); if(afSt.heat[hy]>1)afSt.heat[hy]=1; } }
+    if(Math.random()<0.15+0.85*bass){ var hy=Math.floor(Math.random()*(HN/4+1)); afSt.heat[hy]+=(0.3+0.7*bass)*(0.5+0.5*Math.random()); if(afSt.heat[hy]>1)afSt.heat[hy]=1; } }
   var bt=afSt.wave;
   afSt.ballX[0]=0.5+0.40*Math.sin(bt*0.7); afSt.ballY[0]=0.5+0.40*Math.cos(bt*0.9);
   afSt.ballX[1]=0.5+0.35*Math.sin(bt*1.1+2); afSt.ballY[1]=0.5+0.40*Math.cos(bt*0.6+1);
@@ -435,8 +435,8 @@ function afPrevLoop(){
       case 'vortex': var va=Math.atan2(ny-0.5,nx-0.5); var vv=0.5+0.5*Math.sin(va*2+Math.log(dist+0.05)*6-afSt.spin*12.566); br=vv*vv*(0.3+0.7*lvl); hue=(360*(va/6.2832+0.5)+afSt.spin*180)%360; break;
       case 'rainbow': var rs=nx+ny*0.25-afSt.comet; rs-=Math.floor(rs); br=0.45+0.55*lvl; hue=360*rs; break;
       case 'breathe': var bb2=0.5+0.5*Math.sin(afSt.wave*1.2); br=(0.2+0.8*lvl)*(0.45+0.55*bb2)*(1-0.35*dist); hue=(afSt.wave*18)%360; break;
-      case 'heartbeat': var hph=afSt.heart, ht=Math.exp(-Math.pow(hph/0.05,2))+0.6*Math.exp(-Math.pow((hph-0.16)/0.05,2)); if(ht>1)ht=1; br=ht*(0.4+0.6*lvl)*(1-0.25*dist); hue=350; sat=1-0.5*ht; break;
-      case 'lightning': var lbx=0.5+0.42*Math.sin(afSt.scan*8.168), lon=(treble>0.35)?(0.4+0.6*treble):0, ldd=Math.abs(nx-lbx); br=Math.exp(-Math.pow(ldd/(0.02+0.05*treble),2))*lon; hue=215; sat=0.45; break;
+      case 'heartbeat': var hph=afSt.heart, ht=Math.exp(-Math.pow(hph/0.09,2))+0.7*Math.exp(-Math.pow((hph-0.18)/0.09,2)); if(ht>1)ht=1; br=(0.15+0.85*ht)*(0.35+0.65*lvl)*(1-0.25*dist); hue=350; sat=1-0.5*ht; break;
+      case 'lightning': var lbx=0.5+0.42*Math.sin(afSt.scan*8.168), lbx2=0.5+0.42*Math.sin(afSt.scan*8.168+2.1), lw=0.025+0.05*treble; var lbolt=Math.exp(-Math.pow((nx-lbx)/lw,2)), lb2=0.6*Math.exp(-Math.pow((nx-lbx2)/lw,2)); if(lb2>lbolt)lbolt=lb2; var lflk=0.6+0.4*Math.sin(ny*40+afSt.wave*30); br=lbolt*(0.2+0.8*treble)*lflk; hue=215; sat=0.45; break;
       case 'matrix': var mcol=Math.min(23,Math.floor(nx*24)); var mh=Math.sin(mcol*12.9898)*43758.5453; mh-=Math.floor(mh); var mph=(afSt.matrix*(0.5+mh)+mh)%1; var mhead=1.1-mph*1.2, md=ny-mhead; br=(md>=0&&md<0.4)?(1-md/0.4)*(0.4+0.6*lvl):0; hue=130; break;
       case 'starburst': if(afSt.ring){ var sba=Math.atan2(ny-0.5,nx-0.5); var spk=Math.pow(0.5+0.5*Math.sin(sba*8),3); br=spk*Math.exp(-Math.pow((dist-afSt.ringPh*0.8)/0.18,2)); } br*=(0.5+0.5*lvl); hue=40+280*bass; break;
       case 'pinwheel': var pa=Math.atan2(ny-0.5,nx-0.5)/6.2832+0.5, ps=pa+afSt.spin; ps-=Math.floor(ps); var psect=Math.floor(ps*8); br=(0.3+0.7*lvl)*(0.6+0.4*Math.cos(dist*6)); hue=psect*45; break;
