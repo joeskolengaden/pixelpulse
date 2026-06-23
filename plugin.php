@@ -181,6 +181,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
       <div class="lab">Fresh look each change</div><div><label class="sw"><input type="checkbox" id="af-fresh-cb"<?php echo af_chk('fresh_per_change','1'); ?> onChange="<?php echo af_js('fresh_per_change', true); ?>"><span class="sl2"></span></label> <span class="help">rotate palette (hue shift) + vary motion each design change</span></div>
       <div class="lab">Minimum glow</div><div><?php echo afNum('min_glow', '8', '0', '50', '1', '%'); ?> <span class="help">never goes dark — keeps a floor of LEDs lit</span></div>
+      <div class="lab">Idle animation</div><div><?php echo afNum('idle_design', '35', '0', '100', '5', '%'); ?> <span class="help">when silent, designs still show their form (real audio takes over)</span></div>
       <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
     </div></div>
   </div>
@@ -318,7 +319,7 @@ function afPalCol(name,t,br){ var P=afPals[name]; if(!P) return null; t-=Math.fl
   var i=0; while(i<P.length-1 && t>P[i+1][0]) i++;
   var a=P[i], b=P[i<P.length-1?i+1:i], span=b[0]-a[0], f=span>1e-4?(t-a[0])/span:0; if(f<0)f=0; if(f>1)f=1;
   return 'rgb('+Math.round((a[1]+(b[1]-a[1])*f)*br)+','+Math.round((a[2]+(b[2]-a[2])*f)*br)+','+Math.round((a[3]+(b[3]-a[3])*f)*br)+')'; }
-var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0,beatCount:0,hueShift:0,varSpeed:1,varDir:1,lastMode:''};
+var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0,beatCount:0,hueShift:0,varSpeed:1,varDir:1,lastMode:'',idleBeatT:0,idleBeatEnv:0};
 // what each design reacts to (the audio feature -> visual parameter), shown in the UI
 var afReact={
  bloom:'beat fires the ring · bass→hue · volume→brightness', spectrum:'each column brightness = its frequency band', vu:'fill height = volume',
@@ -352,11 +353,20 @@ function afPrevLoop(){
   var frame=window.afFrame, haveLive=(frame && frame.length>=afPts.length-2);
   document.getElementById('af-prevmode').textContent=mode+(s.musicType?(' · '+s.musicType):'');
   var ls=document.getElementById('af-live-stat'); if(ls) ls.textContent=haveLive?'':'(play a sequence)';
-  var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0;
+  var bands=s.bands||[], nb=bands.length||8, lvl=s.level||0, beat=s.beat||0, bass=s.bass||0, treble=s.treble||0, mid=s.mid||0;
   var gsel=document.getElementById('af-spatialgroup'), gval=gsel?gsel.value:'(all)';
   var gidx=afGroups.indexOf(gval), gfilter=(gval!=='(all)'&&gidx>=0), gbit=gidx>=0?(1<<gidx):0;
+  // idle design (mirror of engine): self-animate every design when silent
+  var afIdle=(parseFloat((document.getElementById('afn-idle_design')||{}).value)||0)/100;
+  var idleAmt=1-lvl/0.07; if(idleAmt<0)idleAmt=0; if(idleAmt>1)idleAmt=1; var ik=idleAmt*afIdle;
+  if(ik>0){ var IT=afSt.wave;
+    lvl+=(0.22+0.10*Math.sin(IT*1.3)-lvl)*ik; bass+=(0.18+0.18*(0.5+0.5*Math.sin(IT*0.8))-bass)*ik;
+    mid+=(0.15+0.15*(0.5+0.5*Math.sin(IT*1.1+2))-mid)*ik; treble+=(0.12+0.14*(0.5+0.5*Math.sin(IT*1.7+4))-treble)*ik;
+    bands=bands.slice(); for(var ibi=0;ibi<bands.length;ibi++){ var sB=0.12+0.32*(0.5+0.5*Math.sin(IT*1.5+ibi*0.55)); bands[ibi]+=(sB-(bands[ibi]||0))*ik; } }
   // advance shared effect state once per frame
   var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;afSt.beatCount++;} if(beat<0.2)afSt.latch=false;
+  if(afIdle>0&&idleAmt>0.4){ afSt.idleBeatT+=dt; if(afSt.idleBeatT>=1.3){afSt.idleBeatT=0;trig=true;afSt.beatCount++;afSt.idleBeatEnv=1;} }
+  if(afSt.idleBeatEnv>0){ var ifl=afSt.idleBeatEnv*(0.45+0.45*afIdle); if(ifl>beat)beat=ifl; afSt.idleBeatEnv-=dt*2.5; if(afSt.idleBeatEnv<0)afSt.idleBeatEnv=0; }
   // fresh look per design change: rotate palette + vary motion (mirror of the engine)
   var afFresh=!(document.getElementById('af-fresh-cb')) || document.getElementById('af-fresh-cb').checked;
   var afMinG=(parseFloat((document.getElementById('afn-min_glow')||{}).value)||0)/100;
@@ -421,7 +431,7 @@ function afPrevLoop(){
       case 'gravimeter': br=(ny<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-ny))):0; if(Math.abs(ny-afSt.vuPeak)<0.02)br=1; hue=360*ny; break;
       case 'gravcenter': var dc=Math.abs(ny-0.5)*2; br=(dc<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-dc))):0; if(Math.abs(dc-afSt.vuPeak)<0.03)br=1; hue=360*dc; break;
       case 'waterfall': if(afSt.wf.length){ var ti=Math.min(afSt.wf.length-1,Math.floor(ny*afSt.wf.length)); var row=afSt.wf[afSt.wf.length-1-ti]; if(row){ var wbi=Math.min(nb-1,Math.floor(nx*nb)); br=row[wbi]||0; } } hue=280*nx; break;
-      case 'djlight': var e; if(dist<0.34){e=bass;hue=0;}else if(dist<0.67){e=s.mid||0;hue=120;}else{e=treble;hue=240;} br=0.12+0.88*e; break;
+      case 'djlight': var e; if(dist<0.34){e=bass;hue=0;}else if(dist<0.67){e=mid;hue=120;}else{e=treble;hue=240;} br=0.12+0.88*e; break;
       case 'puddles': afSt.puddles.forEach(function(pu){ var rd=Math.hypot(nx-pu.x,ny-pu.y), radius=pu.age*0.3; if(radius>0&&rd<radius) br+=(1-rd/radius)*(1-pu.age/1.4); }); br=Math.min(1,br); hue=360*nx; break;
       case 'fire2012': var hi=Math.min(afSt.heat.length-1,Math.floor(ny*(afSt.heat.length-1))); var hh2=afSt.heat[hi]||0; br=hh2; hue=360*hh2; break;
       case 'aurora': var av=0.5+(0.3+0.3*bass)*Math.sin(ny*4+afSt.wave*0.8)+0.2*Math.sin(nx*3-afSt.wave*0.5)+0.2*Math.sin((nx+ny)*2+afSt.wave*0.3); if(av<0)av=0; if(av>1)av=1; br=(0.2+0.6*av)*(0.55+0.45*lvl); hue=360*av; break;

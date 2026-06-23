@@ -394,10 +394,10 @@ private:
         case 1: if (mRingOn) br = std::exp(-std::pow((p.dist - mRingPhase) / 0.16f, 2.f));
             br *= (0.45f + 0.55f * level); hue = 210.0 - 170.0 * bass; break;
         case 2: { int bi = (int)(p.nx * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
-            br = mAnalyzer.band(bi); hue = 280.0 * p.nx; } break;
+            br = mCtxBand[bi]; hue = 280.0 * p.nx; } break;
         case 3: br = (p.ny <= level) ? (0.4f + 0.6f * (1.f - (level - p.ny))) : 0.f; hue = 120.0 * (1.0 - p.ny); break;
         case 4: { int bi = (int)(p.dist * nb); bi = bi < 0 ? 0 : (bi >= nb ? nb - 1 : bi);
-            br = mAnalyzer.band(bi); hue = 200.0 + 100.0 * p.dist; } break;
+            br = mCtxBand[bi]; hue = 200.0 + 100.0 * p.dist; } break;
         case 5: br = 0.1f + 0.9f * level; hue = 210.0 - 170.0 * bass + 90.0 * treble; break;
         case 6: br = beat; hue = 40.0 + 200.0 * bass; break;
         case 7: { float dd = std::fabs(p.nx - mCtxChase); dd = std::min(dd, 1.f - dd);
@@ -417,7 +417,7 @@ private:
         case 15: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) * 57.2958f;
             br = 0.2f + 0.8f * level; hue = ang + mSpinPhase * 360.0f + 180.0 * p.dist; } break;
         case 16: { int col = (int)(p.nx * nb); col = col < 0 ? 0 : (col >= nb ? nb - 1 : col);
-            float h = mAnalyzer.band(col); br = (p.ny <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * p.nx; } break;
+            float h = mCtxBand[col]; br = (p.ny <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * p.nx; } break;
         case 17: { float v = 0.5f + 0.5f * std::sin((p.dist * 5.0f - mRipplePhase) * 6.2832f);
             br = std::pow(v, 3.f) * (0.3f + 0.7f * level); hue = 190.0 + 130.0 * p.dist; } break;
         case 18: { float flick = 0.55f + 0.45f * std::sin(mWavePhase * 8.f + p.nx * 40.f + p.ny * 25.f);
@@ -447,7 +447,7 @@ private:
             int idx = (mWfHead - ti) % kWfT; if (idx < 0) idx += kWfT;
             br = mWaterfall[idx][bi]; hue = 280.0 * p.nx; } break;
         case 26: { float dd = p.dist; float e;  // djlight - bass/mid/treble rings out from centre
-            if (dd < 0.34f) { e = bass; hue = 0.0; } else if (dd < 0.67f) { e = mAnalyzer.mid(); hue = 120.0; } else { e = treble; hue = 240.0; }
+            if (dd < 0.34f) { e = bass; hue = 0.0; } else if (dd < 0.67f) { e = mCtxMid; hue = 120.0; } else { e = treble; hue = 240.0; }
             br = 0.12f + 0.88f * e; } break;
         case 27: { for (const auto& pu : mPuddles) if (pu.on) {  // puddles - pools pop on beats and soak out
             float rd = std::hypot(p.nx - pu.x, p.ny - pu.y), radius = pu.age * 0.3f;
@@ -523,7 +523,7 @@ private:
             float y = std::fmod(h + mWavePhase * 0.4f, 1.f), dd = std::fabs(p.ny - y);
             br = std::exp(-std::pow(dd / 0.05f, 2.f)) * (0.4f + 0.6f * bass) * (0.5f + 0.5f * level) * (1.f - 0.6f * y); hue = 32.0 - 32.0 * y; } break;
         case 51: { int bi = (int)(std::fabs(p.nx - 0.5f) * 2.f * nb); if (bi < 0) bi = 0; if (bi >= nb) bi = nb - 1;  // mirror - spectrum from centre
-            float h = mAnalyzer.band(bi); br = (std::fabs(p.ny - 0.5f) * 2.f <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * std::fabs(p.nx - 0.5f) * 2.f; } break;
+            float h = mCtxBand[bi]; br = (std::fabs(p.ny - 0.5f) * 2.f <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * std::fabs(p.nx - 0.5f) * 2.f; } break;
         case 52: { float a = p.nx * 9.f + mWavePhase * 3.f;  // dna - two intertwining strands
             float amp = 0.22f + 0.28f * bass, s1 = 0.5f + amp * std::sin(a), s2 = 0.5f - amp * std::sin(a);  // dna: helix opens with bass
             float d1 = std::fabs(p.ny - s1), d2 = std::fabs(p.ny - s2);
@@ -531,7 +531,7 @@ private:
             hue = (d1 < d2) ? 200.0 : 320.0; } break;
         case 53: { int cx = (int)(p.nx * 6.f), cy = (int)(p.ny * 6.f);  // blocks - checkerboard, beat-inverting
             bool on = ((cx + cy + mBeatCount) & 1); int bi = (cx + cy) % std::max(1, nb);
-            br = on ? (0.2f + 0.8f * mAnalyzer.band(bi)) : 0.f; hue = 60.0 * ((cx + cy) % 6); } break;
+            br = on ? (0.2f + 0.8f * mCtxBand[bi]) : 0.f; hue = 60.0 * ((cx + cy) % 6); } break;
         case 54: { float eye = 0.5f + 0.46f * std::sin(mScanPhase * 6.2832f);  // cylon - horizontal sweeping eye
             float dd = std::fabs(p.nx - eye); br = std::exp(-std::pow(dd / (0.035f + 0.08f * level), 2.f)) * (0.4f + 0.6f * level); hue = 0.0; } break;  // cylon: eye thickens with volume
         case 55: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) / 6.2832f + 0.5f;  // vuspiral - level fills a spiral
@@ -566,14 +566,40 @@ private:
     void applySpatial(uint8_t* d, float dt) {
         const long cap = (long)FPPD_MAX_CHANNELS;
         const int nb = mAnalyzer.numBands();
-        const float level = mAnalyzer.level();
-        const float beat = mAnalyzer.beat();
-        const float bass = mAnalyzer.bass();
-        const float treble = mAnalyzer.treble();
+        float level = mAnalyzer.level();
+        float beat = mAnalyzer.beat();
+        float bass = mAnalyzer.bass();
+        float treble = mAnalyzer.treble();
+        float mid = mAnalyzer.mid();
+        for (int i = 0; i < nb && i < 64; ++i) mCtxBand[i] = mAnalyzer.band(i);
+
+        // Idle design: when there's (almost) no sound, gently self-animate every
+        // design with a soft synthetic profile so it still shows its FORM (bars
+        // bounce, waves flow, beats occasionally fire) instead of going flat.
+        float idleAmt = 1.f - level / 0.07f; if (idleAmt < 0.f) idleAmt = 0.f; if (idleAmt > 1.f) idleAmt = 1.f;
+        float ik = idleAmt * (mIdleDesign / 100.f);
+        if (ik > 0.f) {
+            float t = mWavePhase;
+            level  += (0.22f + 0.10f * std::sin(t * 1.3f) - level) * ik;
+            bass   += (0.18f + 0.18f * (0.5f + 0.5f * std::sin(t * 0.8f)) - bass) * ik;
+            mid    += (0.15f + 0.15f * (0.5f + 0.5f * std::sin(t * 1.1f + 2.f)) - mid) * ik;
+            treble += (0.12f + 0.14f * (0.5f + 0.5f * std::sin(t * 1.7f + 4.f)) - treble) * ik;
+            for (int i = 0; i < nb && i < 64; ++i) {
+                float sBand = 0.12f + 0.32f * (0.5f + 0.5f * std::sin(t * 1.5f + i * 0.55f));
+                mCtxBand[i] += (sBand - mCtxBand[i]) * ik;
+            }
+        }
+        mCtxMid = mid;
 
         bool beatTrig = false;  // rising edge of a beat
         if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; beatTrig = true; mBeatCount++; }
         if (beat < 0.2f) mBeatLatch = false;
+        // synthetic idle beats so beat-driven designs (spike/strobe/fireworks/rain…) still fire when silent
+        if (mIdleDesign > 0 && idleAmt > 0.4f) {
+            mIdleBeatT += dt;
+            if (mIdleBeatT >= 1.3f) { mIdleBeatT = 0.f; beatTrig = true; mBeatCount++; mIdleBeatEnv = 1.f; }
+        }
+        if (mIdleBeatEnv > 0.f) { float fl = mIdleBeatEnv * (0.45f + 0.45f * mIdleDesign / 100.f); if (fl > beat) beat = fl; mIdleBeatEnv -= dt * 2.5f; if (mIdleBeatEnv < 0.f) mIdleBeatEnv = 0.f; }
 
         updateProfile(dt);  // keep the live music profile current
 
@@ -635,7 +661,7 @@ private:
         // waterfall: push the current spectrum into the scrolling history ~25x/sec
         mWfAccum += dt;
         if (mWfAccum >= 0.04f) { mWfAccum -= 0.04f; mWfHead = (mWfHead + 1) % kWfT;
-            for (int b = 0; b < 16; ++b) mWaterfall[mWfHead][b] = (b < nb) ? mAnalyzer.band(b) : 0.f; }
+            for (int b = 0; b < 16; ++b) mWaterfall[mWfHead][b] = (b < nb) ? mCtxBand[b] : 0.f; }
         // puddles: spawn at a random LED on each beat, then age out
         if (beatTrig && !mNodes.empty()) {
             const LayoutNode& q = mNodes[std::rand() % (int)mNodes.size()];
@@ -663,7 +689,7 @@ private:
         for (int k = 7; k > 0; --k) { mLissX[k] = mLissX[k - 1]; mLissY[k] = mLissY[k - 1]; }
         { float t = mWavePhase * 1.5f; mLissX[0] = 0.5f + 0.42f * std::sin(t * 3.f + 1.f); mLissY[0] = 0.5f + 0.42f * std::sin(t * 2.f); }
         int dom = 0; float dmax = 0.f;  // dominant band (for colorwash)
-        for (int b = 0; b < nb; ++b) { float e = mAnalyzer.band(b); if (e > dmax) { dmax = e; dom = b; } }
+        for (int b = 0; b < nb; ++b) { float e = mCtxBand[b]; if (e > dmax) { dmax = e; dom = b; } }
 
         // stash per-frame context so nodeColor() can render any design
         mCtxLevel = level; mCtxBeat = beat; mCtxBass = bass; mCtxTreble = treble;
@@ -994,6 +1020,7 @@ private:
         mCycleSecs = std::max(3L, toLong(cfg("spatial_cyclesecs"), 20));
         mFreshPerChange = toLong(cfg("fresh_per_change"), 1) != 0;
         mMinGlow = (float)std::min(0.5, std::max(0.0, toDouble(cfg("min_glow"), 8.0) / 100.0));
+        mIdleDesign = std::min(100L, std::max(0L, toLong(cfg("idle_design"), 35)));
         mAutoLevel = toLong(cfg("auto_level"), 1) != 0;
         mSpatialGroup = cfg("spatial_group");
     }
@@ -1073,8 +1100,10 @@ private:
     bool mWantSwitch = false;
     // per-frame render context for nodeColor()
     float mCtxLevel = 0.f, mCtxBeat = 0.f, mCtxBass = 0.f, mCtxTreble = 0.f, mCtxChase = 0.f;
+    float mCtxBand[64] = {0}, mCtxMid = 0.f;   // idle-substitutable spectrum + mid
     int mCtxNb = 8, mCtxDom = 0;
     bool mCtxBeatTrig = false;
+    long mIdleDesign = 35; float mIdleBeatT = 0.f, mIdleBeatEnv = 0.f;  // self-animate designs when silent
     // colour palette: -1 auto (HSV), else index into kPalettes
     int mPalette = -1, mSmartPalette = 6, mCtxPalette = -1;
     struct Burst { float x = 0, y = 0, age = 0; bool on = false; };
