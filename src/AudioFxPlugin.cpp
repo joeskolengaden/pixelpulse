@@ -96,8 +96,9 @@ const char* const kSpatialModes[] = {
     "fire2012", "aurora", "noise", "twinkle",
     "metaballs", "bursts", "drift", "lissajous",
     "tunnel", "kaleido", "vortex", "rainbow", "breathe", "heartbeat", "lightning", "matrix",
-    "starburst", "pinwheel", "glitter", "tide", "radar", "bounce", "embers", "mirror"};
-const int kNumSpatialModes = 51;
+    "starburst", "pinwheel", "glitter", "tide", "radar", "bounce", "embers", "mirror",
+    "dna", "blocks", "cylon", "vuspiral", "fireflies", "strobepop", "wipe", "ribbons"};
+const int kNumSpatialModes = 59;
 const int kWfT = 64;    // waterfall (spectrogram) history depth
 const int kHeatN = 32;  // fire2012 heat cells along height
 int spatialModeIndex(const std::string& s) {
@@ -111,19 +112,20 @@ const char* spatialModeName(int idx) {
 // Curated order the auto-cycle walks through (1-based mode indices).
 const int kCycleList[] = {1, 5, 15, 23, 32, 7, 29, 17, 9, 26, 33, 16, 10, 28, 25, 20, 34, 30, 2, 18, 27, 19, 24, 35, 11, 31, 21, 4, 13, 22,
                           36, 38, 37, 42, 39, 43, 40, 41,
-                          44, 48, 45, 51, 47, 49, 50, 46};
-const int kCycleLen = 46;
+                          44, 48, 45, 51, 47, 49, 50, 46,
+                          52, 54, 59, 55, 53, 58, 56, 57};
+const int kCycleLen = 54;
 
 // "Smart" auto-DJ: the live music is classified into one of these categories,
 // each with a pool of the designs that suit it best (1-based mode indices).
 const char* const kMusicTypes[] = {"dance", "ambient", "bass", "bright", "groove"};
 const int kNumMusicTypes = 5;
 const int kSmartPools[5][6] = {
-    {44, 42, 26, 43, 49, 5},  // dance/EDM   : starburst, lightning, djlight, matrix, bounce, pulse
-    {29, 40, 47, 36, 31, 48}, // ambient     : aurora, breathe, tide, tunnel, twinkle, radar
-    {5, 41, 50, 28, 32, 47},  // bass-heavy  : pulse, heartbeat, embers, fire2012, metaballs, tide
-    {8, 46, 39, 51, 45, 43},  // bright/pop  : sparkle, glitter, rainbow, mirror, pinwheel, matrix
-    {7, 2, 37, 45, 16, 51},   // groove      : chase, spectrum, kaleido, pinwheel, bars, mirror
+    {44, 57, 26, 53, 49, 54},  // dance/EDM   : starburst, strobepop, djlight, blocks, bounce, cylon
+    {29, 40, 47, 36, 56, 52},  // ambient     : aurora, breathe, tide, tunnel, fireflies, dna
+    {5, 41, 50, 28, 32, 55},   // bass-heavy  : pulse, heartbeat, embers, fire2012, metaballs, vuspiral
+    {8, 46, 39, 51, 59, 58},   // bright/pop  : sparkle, glitter, rainbow, mirror, ribbons, wipe
+    {7, 2, 37, 45, 16, 52}     // groove      : chase, spectrum, kaleido, pinwheel, bars, dna
 };
 const int kSmartPoolLen = 6;
 
@@ -518,6 +520,29 @@ private:
             br = std::exp(-std::pow(dd / 0.05f, 2.f)) * (0.4f + 0.6f * bass) * (0.5f + 0.5f * level) * (1.f - 0.6f * y); hue = 32.0 - 32.0 * y; } break;
         case 51: { int bi = (int)(std::fabs(p.nx - 0.5f) * 2.f * nb); if (bi < 0) bi = 0; if (bi >= nb) bi = nb - 1;  // mirror - spectrum from centre
             float h = mAnalyzer.band(bi); br = (std::fabs(p.ny - 0.5f) * 2.f <= h) ? (0.4f + 0.6f * h) : 0.f; hue = 280.0 * std::fabs(p.nx - 0.5f) * 2.f; } break;
+        case 52: { float a = p.nx * 9.f + mWavePhase * 3.f;  // dna - two intertwining strands
+            float s1 = 0.5f + 0.4f * std::sin(a), s2 = 0.5f - 0.4f * std::sin(a);
+            float d1 = std::fabs(p.ny - s1), d2 = std::fabs(p.ny - s2);
+            br = (std::exp(-std::pow(d1 / 0.06f, 2.f)) + std::exp(-std::pow(d2 / 0.06f, 2.f))) * (0.4f + 0.6f * level);
+            hue = (d1 < d2) ? 200.0 : 320.0; } break;
+        case 53: { int cx = (int)(p.nx * 6.f), cy = (int)(p.ny * 6.f);  // blocks - checkerboard, beat-inverting
+            bool on = ((cx + cy + mBeatCount) & 1); int bi = (cx + cy) % std::max(1, nb);
+            br = on ? (0.2f + 0.8f * mAnalyzer.band(bi)) : 0.f; hue = 60.0 * ((cx + cy) % 6); } break;
+        case 54: { float eye = 0.5f + 0.46f * std::sin(mScanPhase * 6.2832f);  // cylon - horizontal sweeping eye
+            float dd = std::fabs(p.nx - eye); br = std::exp(-std::pow(dd / 0.07f, 2.f)) * (0.4f + 0.6f * level); hue = 0.0; } break;
+        case 55: { float ang = std::atan2(p.ny - 0.5f, p.nx - 0.5f) / 6.2832f + 0.5f;  // vuspiral - level fills a spiral
+            float sp = ang * 0.25f + p.dist; sp -= std::floor(sp);
+            br = (sp <= mVu) ? (0.4f + 0.6f * (1.f - (mVu - sp))) : 0.f; hue = 360.0 * sp; } break;
+        case 56: { float h = std::fmod(std::sin(p.ch * 4.19f) * 43758.5453f, 1.f); if (h < 0) h += 1.f;  // fireflies - slow wandering glows
+            float tw = std::sin(mWavePhase * 0.9f + h * 31.4f); br = (tw > 0.75f) ? (tw - 0.75f) * 4.f : 0.f; br *= (0.5f + 0.5f * level);
+            float h2 = std::fmod(std::sin(p.ch * 0.07f) * 43758.5453f, 1.f); if (h2 < 0) h2 += 1.f; hue = 80.0 + 60.0 * h2; } break;
+        case 57: { br = (beat > 0.5f) ? 1.f : 0.f; hue = std::fmod(mBeatCount * 0.27f, 1.f) * 360.0; } break;  // strobepop - colour strobe, new hue per beat
+        case 58: { float w = mCometPhase, dd = p.nx - w; if (dd < 0.f) dd += 1.f;  // wipe - colour sweep with trail
+            br = std::pow(1.f - dd, 2.f) * (0.35f + 0.65f * level); hue = std::fmod(mCometPhase * 360.0 + 110.0 * p.ny, 360.0); } break;
+        case 59: { float r = 0.f; for (int k = 0; k < 3; ++k) {  // ribbons - flowing horizontal bands
+                float yc = 0.25f + 0.25f * k + 0.12f * std::sin(p.nx * 6.f + mWavePhase * (2.f + k) + k);
+                float e = std::exp(-std::pow((p.ny - yc) / 0.05f, 2.f)); if (e > r) r = e; }
+            br = r * (0.35f + 0.65f * level); hue = std::fmod(mWavePhase * 30.0 + 120.0 * p.ny, 360.0); } break;
         default: { for (int k = 0; k < 8; ++k) {  // lissajous - a point tracing a curve with a trail
             float ax = p.nx - mLissX[k], ay = p.ny - mLissY[k], d = ax * ax + ay * ay, a = (8 - k) / 8.f;
             float bb = std::exp(-d / 0.008f) * a; if (bb > br) br = bb; }
@@ -541,7 +566,7 @@ private:
         const float treble = mAnalyzer.treble();
 
         bool beatTrig = false;  // rising edge of a beat
-        if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; beatTrig = true; }
+        if (beat > 0.5f && !mBeatLatch) { mBeatLatch = true; beatTrig = true; mBeatCount++; }
         if (beat < 0.2f) mBeatLatch = false;
 
         updateProfile(dt);  // keep the live music profile current
@@ -1009,6 +1034,7 @@ private:
     float mRingPhase = 0.f, mChasePhase = 0.f, mWavePhase = 0.f;
     float mSpinPhase = 0.f, mRipplePhase = 0.f, mCometPhase = 0.f, mScanPhase = 0.f;
     float mHeartPhase = 0.f, mMatrixPhase = 0.f;  // heartbeat (BPM-synced), matrix (falling streams)
+    int mBeatCount = 0;  // increments each beat (blocks invert / strobepop hue)
     float mRainFront[3] = {-1.f, -1.f, -1.f};
     // audio meters (phase 2): gravity VU, waterfall spectrogram, puddles
     float mVu = 0.f, mVuPeak = 0.f, mWfAccum = 0.f;

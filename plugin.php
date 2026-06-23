@@ -166,7 +166,7 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
         <button type="button" onclick="afUpload()" style="padding:7px 12px;border:1px solid #cdd3dc;border-radius:7px;background:#fff;cursor:pointer">Upload</button>
         <div class="help" id="af-layout-status" style="margin-top:6px">checking…</div>
       </div>
-      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous','tunnel','kaleido','vortex','rainbow','breathe','heartbeat','lightning','matrix','starburst','pinwheel','glitter','tide','radar','bounce','embers','mirror') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">51 styles, driven by physical LED position</span></div>
+      <div class="lab">Mode</div><div><select id="af-spatialmode" onChange="SetPluginSetting('pixelpulse','spatial_mode',this.value,0,0);"><?php foreach (array('bloom','spectrum','vu','radial','pulse','spike','chase','sparkle','wave','fireworks','rain','strobe','colorwash','grow','spin','bars','ripple','fire','comet','plasma','scan','confetti','gravimeter','gravcenter','waterfall','djlight','puddles','fire2012','aurora','noise','twinkle','metaballs','bursts','drift','lissajous','tunnel','kaleido','vortex','rainbow','breathe','heartbeat','lightning','matrix','starburst','pinwheel','glitter','tide','radar','bounce','embers','mirror','dna','blocks','cylon','vuspiral','fireflies','strobepop','wipe','ribbons') as $m) echo "<option value='$m'" . (af_get('spatial_mode','bloom')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">59 styles, driven by physical LED position</span></div>
       <div class="lab">Model group</div><div><select id="af-spatialgroup" onChange="SetPluginSetting('pixelpulse','spatial_group',this.value,0,0);"><option value="<?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?>"><?php echo htmlspecialchars(af_get('spatial_group','(all)')); ?></option></select> <span class="help">limit to one xLights group</span></div>
       <div class="lab">With playback</div><div><select onChange="SetPluginSetting('pixelpulse','spatial_blend',this.value,0,0);"><?php foreach (array('replace'=>'replace (override)','overlay'=>'overlay (keep brighter)','add'=>'add (brighten)','modulate'=>'modulate (pulse the show)') as $v=>$lbl) echo "<option value='$v'" . (af_get('spatial_blend','replace')===$v?' selected':'') . ">$lbl</option>"; ?></select> <span class="help">override the sequence, or blend with it</span></div>
       <div class="lab">Auto design change</div><div><select onChange="afAutocycle(this);"><?php foreach (array('off','time','beats','smart') as $m) echo "<option value='$m'" . (af_get('spatial_autocycle','off')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">smart = pick designs to match the music · when on, designs cycle on their own (no show needed)</span></div>
@@ -293,7 +293,7 @@ function afPalCol(name,t,br){ var P=afPals[name]; if(!P) return null; t-=Math.fl
   var i=0; while(i<P.length-1 && t>P[i+1][0]) i++;
   var a=P[i], b=P[i<P.length-1?i+1:i], span=b[0]-a[0], f=span>1e-4?(t-a[0])/span:0; if(f<0)f=0; if(f>1)f=1;
   return 'rgb('+Math.round((a[1]+(b[1]-a[1])*f)*br)+','+Math.round((a[2]+(b[2]-a[2])*f)*br)+','+Math.round((a[3]+(b[3]-a[3])*f)*br)+')'; }
-var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0};
+var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0,beatCount:0};
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
   if(!afPts) return;
@@ -307,7 +307,7 @@ function afPrevLoop(){
   var gsel=document.getElementById('af-spatialgroup'), gval=gsel?gsel.value:'(all)';
   var gidx=afGroups.indexOf(gval), gfilter=(gval!=='(all)'&&gidx>=0), gbit=gidx>=0?(1<<gidx):0;
   // advance shared effect state once per frame
-  var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;} if(beat<0.2)afSt.latch=false;
+  var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;afSt.beatCount++;} if(beat<0.2)afSt.latch=false;
   afSt.chase+=dt*(0.12+0.5*lvl); afSt.wave+=dt*0.6;
   afSt.spin+=dt*(0.08+0.25*lvl); afSt.spin-=Math.floor(afSt.spin);
   afSt.ripple+=dt*(0.25+0.6*lvl); afSt.ripple-=Math.floor(afSt.ripple);
@@ -391,6 +391,14 @@ function afPrevLoop(){
       case 'bounce': var bby=0.08+0.84*Math.abs(Math.sin(afSt.scan*3.14159)), bdd=Math.abs(ny-bby); br=Math.exp(-Math.pow(bdd/0.09,2))*(0.4+0.6*lvl); hue=20+320*bby; break;
       case 'embers': var eh=Math.sin(i*2.71)*43758.5453; eh-=Math.floor(eh); var ey=(eh+afSt.wave*0.4)%1, edd=Math.abs(ny-ey); br=Math.exp(-Math.pow(edd/0.05,2))*(0.4+0.6*bass)*(0.5+0.5*lvl)*(1-0.6*ey); hue=32-32*ey; break;
       case 'mirror': var mbi=Math.min(nb-1,Math.floor(Math.abs(nx-0.5)*2*nb)), mhh=bands[mbi]||0; br=(Math.abs(ny-0.5)*2<=mhh)?(0.4+0.6*mhh):0; hue=280*Math.abs(nx-0.5)*2; break;
+      case 'dna': var da=nx*9+afSt.wave*3, ds1=0.5+0.4*Math.sin(da), ds2=0.5-0.4*Math.sin(da), dd1=Math.abs(ny-ds1), dd2=Math.abs(ny-ds2); br=(Math.exp(-Math.pow(dd1/0.06,2))+Math.exp(-Math.pow(dd2/0.06,2)))*(0.4+0.6*lvl); hue=(dd1<dd2)?200:320; break;
+      case 'blocks': var bcx=Math.floor(nx*6), bcy=Math.floor(ny*6), bon=((bcx+bcy+afSt.beatCount)&1), bbi=(bcx+bcy)%Math.max(1,nb); br=bon?(0.2+0.8*(bands[bbi]||0)):0; hue=60*((bcx+bcy)%6); break;
+      case 'cylon': var cye=0.5+0.46*Math.sin(afSt.scan*6.2832), cdd=Math.abs(nx-cye); br=Math.exp(-Math.pow(cdd/0.07,2))*(0.4+0.6*lvl); hue=0; break;
+      case 'vuspiral': var vsa=Math.atan2(ny-0.5,nx-0.5)/6.2832+0.5, vsp=vsa*0.25+dist; vsp-=Math.floor(vsp); br=(vsp<=afSt.vu)?(0.4+0.6*(1-(afSt.vu-vsp))):0; hue=360*vsp; break;
+      case 'fireflies': var fh=Math.sin(i*4.19)*43758.5453; fh-=Math.floor(fh); var ftw=Math.sin(afSt.wave*0.9+fh*31.4); br=(ftw>0.75)?(ftw-0.75)*4:0; br*=(0.5+0.5*lvl); var fh2=Math.sin(i*0.07)*43758.5453; fh2-=Math.floor(fh2); hue=80+60*fh2; break;
+      case 'strobepop': br=(beat>0.5)?1:0; hue=((afSt.beatCount*0.27)%1)*360; break;
+      case 'wipe': var ww=afSt.comet, wdd=nx-ww; if(wdd<0)wdd+=1; br=Math.pow(1-wdd,2)*(0.35+0.65*lvl); hue=(afSt.comet*360+110*ny)%360; break;
+      case 'ribbons': var rr=0; for(var rk=0;rk<3;rk++){ var ryc=0.25+0.25*rk+0.12*Math.sin(nx*6+afSt.wave*(2+rk)+rk); var re=Math.exp(-Math.pow((ny-ryc)/0.05,2)); if(re>rr)rr=re; } br=rr*(0.35+0.65*lvl); hue=(afSt.wave*30+120*ny)%360; break;
       default: for(var lk2=0;lk2<8;lk2++){ var lax=nx-afSt.lissX[lk2], lay=ny-afSt.lissY[lk2], ld=lax*lax+lay*lay, la=(8-lk2)/8; var lb=Math.exp(-ld/0.008)*la; if(lb>br)br=lb; } br*=(0.5+0.5*lvl); hue=360*((afSt.wave*0.2)%1); break;
     }
     if(br<0)br=0; if(br>1)br=1;
