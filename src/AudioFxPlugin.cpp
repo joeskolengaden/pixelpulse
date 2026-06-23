@@ -548,6 +548,8 @@ private:
             float bb = std::exp(-d / 0.008f) * a; if (bb > br) br = bb; }
             br *= (0.5f + 0.5f * level); hue = 360.0 * std::fmod(mWavePhase * 0.2f, 1.f); } break;
         }
+        if (mFreshPerChange) hue += mHueShift;   // rotate the palette so each design load feels fresh
+        if (br < mMinGlow) br = mMinGlow;        // floor: keep a minimum number of LEDs glowing
         br *= mSpatialIntensity / 100.f;
         if (br < 0.f) br = 0.f; if (br > 1.f) br = 1.f;
         if (mCtxPalette >= 0) paletteRGB(mCtxPalette, (float)(std::fmod(hue, 360.0) / 360.0), br, R, G, B);
@@ -591,6 +593,11 @@ private:
             if (beatTrig || mSwitchWait > 2.5f) {
                 mPrevMode = mCurMode; mCurMode = target; mTransition = 0.f; mWantSwitch = false;
                 mTransDur = 0.7f - 0.4f * mAvgLevel; if (mTransDur < 0.25f) mTransDur = 0.25f;
+                if (mFreshPerChange) {  // fresh palette + motion every time a design loads
+                    mHueShift = std::fmod(mHueShift + 80.f + (std::rand() % 90), 360.f);
+                    mVarSpeed = 0.7f + (std::rand() % 100) / 100.f * 0.8f;   // 0.7..1.5x motion
+                    mVarDir = (std::rand() % 2) ? 1.f : -1.f;                // sometimes reverse
+                }
             }
         }
         if (mTransition < 1.f) { mTransition += dt / mTransDur; if (mTransition > 1.f) mTransition = 1.f; }
@@ -598,12 +605,14 @@ private:
 
         // per-frame state advance. The new phases are wrapped to [0,1) and used
         // as phase*2pi / phase*360, so wrapping stays continuous and bounded.
-        mChasePhase += dt * (0.12f + 0.5f * level);
-        mWavePhase += dt * 0.6f;
-        mSpinPhase += dt * (0.08f + 0.25f * level); mSpinPhase -= std::floor(mSpinPhase);
-        mRipplePhase += dt * (0.25f + 0.6f * level); mRipplePhase -= std::floor(mRipplePhase);
-        mCometPhase += dt * (0.22f + 0.5f * level); mCometPhase -= std::floor(mCometPhase);
-        mScanPhase += dt * (0.25f + 0.6f * level); mScanPhase -= std::floor(mScanPhase);
+        const float vs = mFreshPerChange ? mVarSpeed : 1.f, vd = mFreshPerChange ? mVarDir : 1.f;
+        if (mFreshPerChange) { mHueShift += dt * 5.f; mHueShift -= 360.f * std::floor(mHueShift / 360.f); }  // gentle continuous drift
+        mChasePhase += dt * (0.12f + 0.5f * level) * vs;
+        mWavePhase += dt * 0.6f * vs;
+        mSpinPhase += dt * (0.08f + 0.25f * level) * vs * vd; mSpinPhase -= std::floor(mSpinPhase);
+        mRipplePhase += dt * (0.25f + 0.6f * level) * vs * vd; mRipplePhase -= std::floor(mRipplePhase);
+        mCometPhase += dt * (0.22f + 0.5f * level) * vs * vd; mCometPhase -= std::floor(mCometPhase);
+        mScanPhase += dt * (0.25f + 0.6f * level) * vs * vd; mScanPhase -= std::floor(mScanPhase);
         { float bpm = mAnalyzer.bpm(); mHeartPhase += dt * (bpm > 30.f ? bpm / 60.f : 1.25f); mHeartPhase -= std::floor(mHeartPhase); }
         mMatrixPhase += dt * (0.3f + 0.7f * level); mMatrixPhase -= std::floor(mMatrixPhase);
         // advance ALL effect state every frame so both designs in a crossfade are live
@@ -979,6 +988,8 @@ private:
         std::string ac = cfg("spatial_autocycle");
         mAutoCycle = (ac == "time") ? 1 : (ac == "beats") ? 2 : (ac == "smart") ? 3 : 0;
         mCycleSecs = std::max(3L, toLong(cfg("spatial_cyclesecs"), 20));
+        mFreshPerChange = toLong(cfg("fresh_per_change"), 1) != 0;
+        mMinGlow = (float)std::min(0.5, std::max(0.0, toDouble(cfg("min_glow"), 8.0) / 100.0));
         mAutoLevel = toLong(cfg("auto_level"), 1) != 0;
         mSpatialGroup = cfg("spatial_group");
     }
@@ -1035,6 +1046,8 @@ private:
     float mSpinPhase = 0.f, mRipplePhase = 0.f, mCometPhase = 0.f, mScanPhase = 0.f;
     float mHeartPhase = 0.f, mMatrixPhase = 0.f;  // heartbeat (BPM-synced), matrix (falling streams)
     int mBeatCount = 0;  // increments each beat (blocks invert / strobepop hue)
+    float mHueShift = 0.f, mVarSpeed = 1.f, mVarDir = 1.f;  // per-design freshness: palette rotation + motion variation
+    bool mFreshPerChange = true; float mMinGlow = 0.08f;
     float mRainFront[3] = {-1.f, -1.f, -1.f};
     // audio meters (phase 2): gravity VU, waterfall spectrogram, puddles
     float mVu = 0.f, mVuPeak = 0.f, mWfAccum = 0.f;

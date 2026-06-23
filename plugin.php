@@ -179,6 +179,8 @@ function afTog($k, $d = '0') { return "<label class=\"sw\"><input type=\"checkbo
       <div class="lab">Change every</div><div><?php echo afNum('spatial_cyclesecs', '20', '3', '300', '1', 's'); ?></div>
       <div class="lab">Colour palette</div><div><select onChange="SetPluginSetting('pixelpulse','palette',this.value,0,0);"><?php foreach (array('auto','rainbow','fire','ocean','forest','sunset','aurora','party','lava','cloud','sherbet') as $m) echo "<option value='$m'" . (af_get('palette','auto')===$m?' selected':'') . ">$m</option>"; ?></select> <span class="help">themed colours (smart picks to match the music)</span></div>
       <div class="lab">Intensity</div><div><?php echo afNum('spatial_intensity', '100', '0', '200', '5', '%'); ?></div>
+      <div class="lab">Fresh look each change</div><div><label class="sw"><input type="checkbox" id="af-fresh-cb"<?php echo af_chk('fresh_per_change','1'); ?> onChange="<?php echo af_js('fresh_per_change', true); ?>"><span class="sl2"></span></label> <span class="help">rotate palette (hue shift) + vary motion each design change</span></div>
+      <div class="lab">Minimum glow</div><div><?php echo afNum('min_glow', '8', '0', '50', '1', '%'); ?> <span class="help">never goes dark — keeps a floor of LEDs lit</span></div>
       <div class="lab"></div><div class="help">Upload your <b>xlights_rgbeffects.xml</b>. When enabled, this renders the whole display from the audio by each prop's real position — overriding the Range pipeline above.</div>
     </div></div>
   </div>
@@ -316,7 +318,7 @@ function afPalCol(name,t,br){ var P=afPals[name]; if(!P) return null; t-=Math.fl
   var i=0; while(i<P.length-1 && t>P[i+1][0]) i++;
   var a=P[i], b=P[i<P.length-1?i+1:i], span=b[0]-a[0], f=span>1e-4?(t-a[0])/span:0; if(f<0)f=0; if(f>1)f=1;
   return 'rgb('+Math.round((a[1]+(b[1]-a[1])*f)*br)+','+Math.round((a[2]+(b[2]-a[2])*f)*br)+','+Math.round((a[3]+(b[3]-a[3])*f)*br)+')'; }
-var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0,beatCount:0};
+var afSt={t:performance.now(),latch:false,ring:false,ringPh:0,chase:0,wave:0,spin:0,ripple:0,comet:0,scan:0,rain:[-1,-1,-1],bursts:[],vu:0,vuPeak:0,wf:[],wfAccum:0,puddles:[],heat:new Array(32).fill(0),fireAccum:0,ballX:[.5,.5,.5],ballY:[.5,.5,.5],ballR:.02,lissX:new Array(8).fill(.5),lissY:new Array(8).fill(.5),heart:0,matrix:0,beatCount:0,hueShift:0,varSpeed:1,varDir:1,lastMode:''};
 function afPrevLoop(){
   requestAnimationFrame(afPrevLoop);
   if(!afPts) return;
@@ -331,11 +333,17 @@ function afPrevLoop(){
   var gidx=afGroups.indexOf(gval), gfilter=(gval!=='(all)'&&gidx>=0), gbit=gidx>=0?(1<<gidx):0;
   // advance shared effect state once per frame
   var trig=false; if(beat>0.5&&!afSt.latch){afSt.latch=true;trig=true;afSt.beatCount++;} if(beat<0.2)afSt.latch=false;
-  afSt.chase+=dt*(0.12+0.5*lvl); afSt.wave+=dt*0.6;
-  afSt.spin+=dt*(0.08+0.25*lvl); afSt.spin-=Math.floor(afSt.spin);
-  afSt.ripple+=dt*(0.25+0.6*lvl); afSt.ripple-=Math.floor(afSt.ripple);
-  afSt.comet+=dt*(0.22+0.5*lvl); afSt.comet-=Math.floor(afSt.comet);
-  afSt.scan+=dt*(0.25+0.6*lvl); afSt.scan-=Math.floor(afSt.scan);
+  // fresh look per design change: rotate palette + vary motion (mirror of the engine)
+  var afFresh=!(document.getElementById('af-fresh-cb')) || document.getElementById('af-fresh-cb').checked;
+  var afMinG=(parseFloat((document.getElementById('afn-min_glow')||{}).value)||0)/100;
+  if(mode!==afSt.lastMode){ afSt.lastMode=mode; if(afFresh){ afSt.hueShift=(afSt.hueShift+80+Math.random()*90)%360; afSt.varSpeed=0.7+Math.random()*0.8; afSt.varDir=(Math.random()<0.5)?1:-1; } }
+  var vs=afFresh?afSt.varSpeed:1, vd=afFresh?afSt.varDir:1;
+  if(afFresh){ afSt.hueShift=(afSt.hueShift+dt*5)%360; }
+  afSt.chase+=dt*(0.12+0.5*lvl)*vs; afSt.wave+=dt*0.6*vs;
+  afSt.spin+=dt*(0.08+0.25*lvl)*vs*vd; afSt.spin-=Math.floor(afSt.spin);
+  afSt.ripple+=dt*(0.25+0.6*lvl)*vs*vd; afSt.ripple-=Math.floor(afSt.ripple);
+  afSt.comet+=dt*(0.22+0.5*lvl)*vs*vd; afSt.comet-=Math.floor(afSt.comet);
+  afSt.scan+=dt*(0.25+0.6*lvl)*vs*vd; afSt.scan-=Math.floor(afSt.scan);
   var _bpm=s.bpm||0; afSt.heart+=dt*(_bpm>30?_bpm/60:1.25); afSt.heart-=Math.floor(afSt.heart);
   afSt.matrix+=dt*(0.3+0.7*lvl); afSt.matrix-=Math.floor(afSt.matrix);
   if(trig){afSt.ring=true;afSt.ringPh=0;} if(afSt.ring){afSt.ringPh+=dt/0.6; if(afSt.ringPh>1.5)afSt.ring=false;}
@@ -424,8 +432,11 @@ function afPrevLoop(){
       case 'ribbons': var rr=0; for(var rk=0;rk<3;rk++){ var ryc=0.25+0.25*rk+0.12*Math.sin(nx*6+afSt.wave*(2+rk)+rk); var re=Math.exp(-Math.pow((ny-ryc)/0.05,2)); if(re>rr)rr=re; } br=rr*(0.35+0.65*lvl); hue=(afSt.wave*30+120*ny)%360; break;
       default: for(var lk2=0;lk2<8;lk2++){ var lax=nx-afSt.lissX[lk2], lay=ny-afSt.lissY[lk2], ld=lax*lax+lay*lay, la=(8-lk2)/8; var lb=Math.exp(-ld/0.008)*la; if(lb>br)br=lb; } br*=(0.5+0.5*lvl); hue=360*((afSt.wave*0.2)%1); break;
     }
+    if(afFresh) hue+=afSt.hueShift;
+    if(br<afMinG) br=afMinG;
     if(br<0)br=0; if(br>1)br=1;
-    var col = pal ? afPalCol(pal, hue/360, Math.max(0.05,br)) : afHsv(hue,sat,Math.max(0.05,br));
+    var hh=((hue%360)+360)%360;
+    var col = pal ? afPalCol(pal, hh/360, Math.max(0.05,br)) : afHsv(hh,sat,Math.max(0.05,br));
     return {br:br, col:col};
   }
   function renderOne(cv, useLive){
