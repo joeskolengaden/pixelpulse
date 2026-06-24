@@ -115,13 +115,18 @@ void AudioAnalyzer::analyzeWindow() {
         for (int k = 0; k < nb; ++k) { mMag[k] -= mNoiseMag[k] * mNoiseReduction; if (mMag[k] < 0.f) mMag[k] = 0.f; }
     }
 
-    // spectral flux (sum of positive magnitude increases) -> onset
+    // Onset function: log-compressed spectral flux with high-frequency emphasis.
+    // Log compression lets quieter beats register (not only the loudest sound) and
+    // the HF weight makes percussive transients (kick/snare/hats) stand out - far
+    // more reliable than raw-magnitude flux on a faint acoustic signal. mPrevMag
+    // now holds the previous log-spectrum.
     float flux = 0.f;
     for (int k = 1; k < nb; ++k) {
-        float d = mMag[k] - mPrevMag[k];
-        if (d > 0) flux += d;
+        float lm = std::log1p(24.f * mMag[k]);
+        float d = lm - mPrevMag[k];
+        if (d > 0.f) flux += d * (0.4f + 0.6f * (float)k / nb);
+        mPrevMag[k] = lm;
     }
-    std::copy(mMag.begin(), mMag.end(), mPrevMag.begin());
 
     bool active = rms > mGate;
 
@@ -180,13 +185,18 @@ void AudioAnalyzer::analyzeWindow() {
     mLevel.store(mLvlS, std::memory_order_relaxed);
     mActive.store(active, std::memory_order_relaxed);
 
-    // beat onset: flux over an adaptive average, with a refractory period
-    mFluxAvg = 0.98f * mFluxAvg + 0.02f * flux;
+    // Beat: onset flux over a fast adaptive threshold, with phase-expectation
+    // gating (the locked tempo lowers the bar near a predicted beat, so we catch
+    // it even when the onset is marginal) and a refractory period.
+    mFluxAvg = 0.90f * mFluxAvg + 0.10f * flux;   // faster local adaptation
     double hopSec = (double)(mFftSize / 2) / mSampleRate;
     mTimeMs += hopSec * 1000.0;
     float curBeat = mBeat.load(std::memory_order_relaxed) * 0.82f;  // decay
     bool onsetFired = false;
-    if (active && flux > mFluxAvg * mSensitivity && (mTimeMs - mLastBeatMs) > 180.0) {
+    float sens = mSensitivity;
+    float phNow = mBeatPhase - std::floor(mBeatPhase);
+    if (phNow < 0.10f || phNow > 0.90f) sens *= 0.55f;   // a beat is expected here
+    if (active && flux > mFluxAvg * sens + 0.015f && (mTimeMs - mLastBeatMs) > 150.0) {
         curBeat = 1.f; mLastBeatMs = mTimeMs; onsetFired = true;
     }
     mBeat.store(curBeat, std::memory_order_relaxed);
