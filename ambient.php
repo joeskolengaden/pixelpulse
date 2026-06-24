@@ -36,7 +36,11 @@ function pp_write_fseq($path, $ch, $frames, $step) {
 
 if (isset($_GET['setup'])) {
     $ch = min(100000, pp_layout_max());
-    $ok = pp_write_fseq($SEQ, $ch, 40, 50);   // 40 frames @ 50ms = 2s loop
+    // step = ms per frame (output rate). lower = fresher output / less lag, but more
+    // CPU. default 50ms (20fps); ?step=33 for 30fps. frames sized for a ~2s loop.
+    $step = isset($_GET['step']) ? max(10, min(100, intval($_GET['step']))) : 50;
+    $frames = max(10, (int)round(2000.0 / $step));
+    $ok = pp_write_fseq($SEQ, $ch, $frames, $step);
     $pl = array(
         'name' => 'pixelpulse_ambient', 'version' => 3, 'repeat' => 1, 'loopCount' => 0,
         'empty' => false, 'desc' => 'Pixel Pulse ambient (blank loop for no-show audio reactivity)',
@@ -45,7 +49,7 @@ if (isset($_GET['setup'])) {
             'sequenceName' => 'pixelpulse_blank.fseq', 'duration' => 2)),
         'leadOut' => array(), 'playlistInfo' => array('total_duration' => 2, 'total_items' => 1));
     $okp = @file_put_contents($PL, json_encode($pl, JSON_PRETTY_PRINT)) !== false;
-    echo json_encode(array('ok' => ($ok && $okp), 'channels' => $ch));
+    echo json_encode(array('ok' => ($ok && $okp), 'channels' => $ch, 'step' => $step, 'fps' => round(1000.0 / $step), 'frames' => $frames));
     exit;
 }
 echo json_encode(array('ok' => true, 'seq' => is_file($SEQ), 'playlist' => is_file($PL)));
