@@ -180,24 +180,65 @@ void AudioAnalyzer::analyzeWindow() {
     mLevel.store(mLvlS, std::memory_order_relaxed);
     mActive.store(active, std::memory_order_relaxed);
 
-    // beat: flux over an adaptive average, with a refractory period
+    // beat onset: flux over an adaptive average, with a refractory period
     mFluxAvg = 0.98f * mFluxAvg + 0.02f * flux;
-    double windowMs = 1000.0 * (mFftSize / 2) / mSampleRate;  // hop time
-    mTimeMs += windowMs;
+    double hopSec = (double)(mFftSize / 2) / mSampleRate;
+    mTimeMs += hopSec * 1000.0;
     float curBeat = mBeat.load(std::memory_order_relaxed) * 0.82f;  // decay
+    bool onsetFired = false;
     if (active && flux > mFluxAvg * mSensitivity && (mTimeMs - mLastBeatMs) > 180.0) {
-        curBeat = 1.f;
-        double interval = mTimeMs - mLastBeatMs;
-        mLastBeatMs = mTimeMs;
-        if (interval > 250.0 && interval < 1500.0) {  // 40-240 bpm
-            // snap to the running estimate if close, else converge quickly
-            if (mLastInterval <= 0) mLastInterval = interval;
-            else if (std::fabs(interval - mLastInterval) < 0.25 * mLastInterval)
-                mLastInterval = 0.6 * mLastInterval + 0.4 * interval;  // refine
-            else
-                mLastInterval = 0.4 * mLastInterval + 0.6 * interval;  // jump to new tempo
-            mBpm.store((float)(60000.0 / mLastInterval), std::memory_order_relaxed);
-        }
+        curBeat = 1.f; mLastBeatMs = mTimeMs; onsetFired = true;
     }
     mBeat.store(curBeat, std::memory_order_relaxed);
+
+    // --- tempo tracking: autocorrelate the onset-strength history ---
+    mOnset[mOnsetHead] = active ? flux : 0.f;
+    mOnsetHead = (mOnsetHead + 1) % ONSET_N;
+    if (++mTempoTick >= 24) {   // recompute ~3-4x/sec
+        mTempoTick = 0;
+        float lin[ONSET_N];
+        for (int j = 0; j < ONSET_N; ++j) lin[j] = mOnset[(mOnsetHead + j) % ONSET_N];
+        int lagMin = (int)std::floor(60.0 / (185.0 * hopSec));
+        int lagMax = (int)std::ceil(60.0 / (60.0 * hopSec));
+        if (lagMin < 2) lagMin = 2;
+        if (lagMax > ONSET_N / 2) lagMax = ONSET_N / 2;
+        float best = 0.f, bestLag = 0.f, total = 1e-6f;
+        for (int lag = lagMin; lag <= lagMax; ++lag) {
+            float ac = 0.f;
+            for (int i = 0; i + lag < ONSET_N; ++i) ac += lin[i] * lin[i + lag];
+            float bpm = (float)(60.0 / (lag * hopSec));
+            float w = std::exp(-((bpm - 120.f) * (bpm - 120.f)) / (2.f * 55.f * 55.f));  // bias toward musical tempos
+            float wac = ac * (0.4f + 0.6f * w);
+            total += ac;
+            if (wac > best) { best = wac; bestLag = (float)lag; }
+        }
+        if (bestLag > 0.f && active) {
+            float newBpm = (float)(60.0 / (bestLag * hopSec));
+            // octave-fold toward the current lock so it stays stable through jitter,
+            // but accept a raw re-lock if the estimate is genuinely far from the lock
+            float folded = newBpm;
+            if (newBpm * 2.f <= 200.f && std::fabs(newBpm * 2.f - mTempoBpm) < std::fabs(folded - mTempoBpm)) folded = newBpm * 2.f;
+            if (newBpm * 0.5f >= 50.f && std::fabs(newBpm * 0.5f - mTempoBpm) < std::fabs(folded - mTempoBpm)) folded = newBpm * 0.5f;
+            float useBpm = (std::fabs(folded - mTempoBpm) < 0.20f * mTempoBpm) ? folded : newBpm;
+            float conf = best / total;
+            float a = 0.10f + 0.30f * std::min(1.f, conf * 8.f);  // lock faster when confident
+            mTempoBpm = mTempoBpm * (1.f - a) + useBpm * a;
+            if (mTempoBpm < 50.f) mTempoBpm = 50.f;
+            if (mTempoBpm > 200.f) mTempoBpm = 200.f;
+            mTempoConfA.store(std::min(1.f, conf * 8.f), std::memory_order_relaxed);
+        }
+    }
+    mBpm.store(mTempoBpm, std::memory_order_relaxed);
+
+    // --- beat-phase clock (PLL): advance at tempo, nudge to land on onsets ---
+    mBeatPhase += (float)(hopSec * mTempoBpm / 60.0);
+    if (onsetFired) {  // pull the phase so this onset sits on a beat (phase 0)
+        float p = mBeatPhase - std::floor(mBeatPhase);
+        float err = (p < 0.5f) ? p : (p - 1.f);
+        mBeatPhase -= 0.12f * err;
+    }
+    if (mBeatPhase >= 1.f) { mBeatPhase -= std::floor(mBeatPhase); mBeatNum++; }
+    if (mBeatPhase < 0.f) mBeatPhase += 1.f;
+    mBeatPhaseA.store(mBeatPhase - std::floor(mBeatPhase), std::memory_order_relaxed);
+    mBeatNumA.store(mBeatNum, std::memory_order_relaxed);
 }

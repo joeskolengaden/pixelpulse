@@ -51,6 +51,10 @@ public:
     float bpm() const { return mBpm.load(std::memory_order_relaxed); }
     bool active() const { return mActive.load(std::memory_order_relaxed); }
     float rawLevel() const { return mRawLevel.load(std::memory_order_relaxed); }  // raw RMS, pre-gain/AGC (for calibration)
+    // tempo intelligence (autocorrelation tempo + beat-phase PLL)
+    float beatPhase() const { return mBeatPhaseA.load(std::memory_order_relaxed); }  // 0..1, 0 = on the beat (predicted, leads the onset)
+    long beatNum() const { return mBeatNumA.load(std::memory_order_relaxed); }        // running beat counter (for phrase boundaries)
+    float tempoConf() const { return mTempoConfA.load(std::memory_order_relaxed); }   // 0..1 how locked the tempo is
 
 private:
     void analyzeWindow();
@@ -85,6 +89,16 @@ private:
     float mFluxAvg = 0.0f;
     double mTimeMs = 0.0, mLastBeatMs = -1000.0;
     double mLastInterval = 0.0;
+
+    // tempo tracking: ring of recent onset strengths, autocorrelated for tempo,
+    // plus a beat-phase clock (PLL) nudged toward detected onsets.
+    static constexpr int ONSET_N = 512;   // ~6s of onset history at the hop rate
+    float mOnset[ONSET_N] = {0};
+    int mOnsetHead = 0, mTempoTick = 0;
+    float mTempoBpm = 120.f, mBeatPhase = 0.f;
+    long mBeatNum = 0;
+    std::atomic<float> mBeatPhaseA{0.f}, mTempoConfA{0.f};
+    std::atomic<long> mBeatNumA{0};
 
     std::atomic<float> mLevel{0}, mBass{0}, mMid{0}, mTreble{0}, mBeat{0}, mBpm{0}, mRawLevel{0};
     std::atomic<float> mBands[MAX_BANDS]{};

@@ -610,13 +610,18 @@ private:
         updateProfile(dt);  // keep the live music profile current
 
         // target design: manual / timer / every 16 beats / smart (music-aware)
+        // tempo intelligence: stable phase-locked beat grid (predicted beats lead
+        // the onset, so switches land ON the beat even when the onset is weak)
+        float beatPhase = mAnalyzer.beatPhase(); long bnum = mAnalyzer.beatNum();
+        bool predBeat = (bnum != mLastBeatNum); mLastBeatNum = bnum;
+
         int target = mSpatialMode;
         if (mAutoCycle == 1) {
             mCycleTimer += dt;
             if (mCycleTimer >= (float)mCycleSecs) { mCycleTimer = 0.f; mCycleIdx++; }
             target = kCycleList[mCycleIdx % kCycleLen];
         } else if (mAutoCycle == 2) {
-            if (beatTrig && ++mCycleBeats >= 16) { mCycleBeats = 0; mCycleIdx++; }
+            if (predBeat && ++mCycleBeats >= 16) { mCycleBeats = 0; mCycleIdx++; }  // every 16 beats (≈4 bars / phrase)
             target = kCycleList[mCycleIdx % kCycleLen];
         } else if (mAutoCycle == 3) {
             target = smartSelect(dt);
@@ -637,7 +642,7 @@ private:
         if (target != mCurMode && !mWantSwitch && mTransition >= 1.f) { mWantSwitch = true; mSwitchWait = 0.f; }
         if (mWantSwitch) {
             mSwitchWait += dt;
-            if (beatTrig || mSwitchWait > 2.5f) {
+            if (predBeat || beatTrig || mSwitchWait > 2.5f) {  // land the change on the (predicted) beat
                 mPrevMode = mCurMode; mCurMode = target; mTransition = 0.f; mWantSwitch = false;
                 mTransDur = 0.7f - 0.4f * mAvgLevel; if (mTransDur < 0.25f) mTransDur = 0.25f;
                 if (mFreshPerChange) {  // fresh palette + motion every time a design loads
@@ -660,7 +665,7 @@ private:
         mRipplePhase += dt * (0.25f + 0.6f * level) * vs * vd; mRipplePhase -= std::floor(mRipplePhase);
         mCometPhase += dt * (0.22f + 0.5f * level) * vs * vd; mCometPhase -= std::floor(mCometPhase);
         mScanPhase += dt * (0.25f + 0.6f * level) * vs * vd; mScanPhase -= std::floor(mScanPhase);
-        { float bpm = mAnalyzer.bpm(); mHeartPhase += dt * (bpm > 30.f ? bpm / 60.f : 1.25f); mHeartPhase -= std::floor(mHeartPhase); }
+        mHeartPhase = beatPhase;  // heartbeat locked to the phase-locked beat grid
         mMatrixPhase += dt * (0.3f + 0.7f * level); mMatrixPhase -= std::floor(mMatrixPhase);
         // advance ALL effect state every frame so both designs in a crossfade are live
         if (beatTrig) { mRingOn = true; mRingPhase = 0.f; }
@@ -942,10 +947,12 @@ private:
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
             "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,"
+            "\"tempoConf\":%.2f,\"beatPhase\":%.2f,"
             "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"palette\":\"%s\",\"switchEnabled\":%s,\"switchOn\":%s,\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
-            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(), spatialModeName(mEffectiveMode),
+            mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(),
+            mAnalyzer.tempoConf(), mAnalyzer.beatPhase(), spatialModeName(mEffectiveMode),
             (mDetectedCat >= 0 && mDetectedCat < kNumMusicTypes) ? kMusicTypes[mDetectedCat] : "",
             effPaletteName(), mSwitchEnabled ? "true" : "false", mSwitchOn ? "true" : "false");
         for (int b = 0; b < mAnalyzer.numBands(); ++b)
@@ -1095,6 +1102,7 @@ private:
     float mSpinPhase = 0.f, mRipplePhase = 0.f, mCometPhase = 0.f, mScanPhase = 0.f;
     float mHeartPhase = 0.f, mMatrixPhase = 0.f;  // heartbeat (BPM-synced), matrix (falling streams)
     int mBeatCount = 0;  // increments each beat (blocks invert / strobepop hue)
+    long mLastBeatNum = 0;  // tracks the analyzer's predicted-beat counter
     float mHueShift = 0.f, mVarSpeed = 1.f, mVarDir = 1.f;  // per-design freshness: palette rotation + motion variation
     bool mFreshPerChange = true; float mMinGlow = 0.08f;
     float mRainFront[3] = {-1.f, -1.f, -1.f};
