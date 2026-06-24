@@ -36,6 +36,11 @@ all: $(TARGET)
 $(TARGET): $(CXXOBJS) $(COBJS)
 	$(CXX) $(SHLIB_FLAGS) -o $@ $(CXXOBJS) $(COBJS) $(AUDIO_LIBS) -lpthread
 
+# The big render file (large switch) is very slow to optimize at -O2 on the
+# single-core BBB; -O1 cuts its compile time hugely with negligible runtime cost.
+src/AudioFxPlugin.o: src/AudioFxPlugin.cpp
+	$(CXX) $(filter-out -O2,$(CXXFLAGS)) -O1 -c -o $@ $<
+
 src/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
