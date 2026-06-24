@@ -201,8 +201,11 @@ void AudioAnalyzer::analyzeWindow() {
     }
     mBeat.store(curBeat, std::memory_order_relaxed);
 
+    if (onsetFired) mOnsetCount.fetch_add(1, std::memory_order_relaxed);
     // --- tempo tracking: autocorrelate the onset-strength history ---
-    mOnset[mOnsetHead] = active ? flux : 0.f;
+    // feed the "novelty" (flux above its local average) so the impulse train is
+    // sharp -> the autocorrelation peaks are crisp -> a more confident tempo lock
+    mOnset[mOnsetHead] = active ? std::max(0.f, flux - mFluxAvg) : 0.f;
     mOnsetHead = (mOnsetHead + 1) % ONSET_N;
     if (++mTempoTick >= 24) {   // recompute ~3-4x/sec
         mTempoTick = 0;

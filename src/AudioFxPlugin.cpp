@@ -947,12 +947,12 @@ private:
         fprintf(f,
             "{\"deviceOk\":%s,\"active\":%s,\"level\":%.3f,\"beat\":%.3f,"
             "\"bass\":%.3f,\"mid\":%.3f,\"treble\":%.3f,\"bpm\":%.0f,\"rawLevel\":%.4f,"
-            "\"tempoConf\":%.2f,\"beatPhase\":%.2f,"
+            "\"tempoConf\":%.2f,\"beatPhase\":%.2f,\"onsets\":%ld,"
             "\"spatialMode\":\"%s\",\"musicType\":\"%s\",\"palette\":\"%s\",\"switchEnabled\":%s,\"switchOn\":%s,\"bands\":[",
             mCapture.ok() ? "true" : "false", mAnalyzer.active() ? "true" : "false",
             mAnalyzer.level(), mAnalyzer.beat(), mAnalyzer.bass(), mAnalyzer.mid(),
             mAnalyzer.treble(), mAnalyzer.bpm(), mAnalyzer.rawLevel(),
-            mAnalyzer.tempoConf(), mAnalyzer.beatPhase(), spatialModeName(mEffectiveMode),
+            mAnalyzer.tempoConf(), mAnalyzer.beatPhase(), mAnalyzer.onsetCount(), spatialModeName(mEffectiveMode),
             (mDetectedCat >= 0 && mDetectedCat < kNumMusicTypes) ? kMusicTypes[mDetectedCat] : "",
             effPaletteName(), mSwitchEnabled ? "true" : "false", mSwitchOn ? "true" : "false");
         for (int b = 0; b < mAnalyzer.numBands(); ++b)

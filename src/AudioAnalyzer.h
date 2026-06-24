@@ -55,6 +55,7 @@ public:
     float beatPhase() const { return mBeatPhaseA.load(std::memory_order_relaxed); }  // 0..1, 0 = on the beat (predicted, leads the onset)
     long beatNum() const { return mBeatNumA.load(std::memory_order_relaxed); }        // running beat counter (for phrase boundaries)
     float tempoConf() const { return mTempoConfA.load(std::memory_order_relaxed); }   // 0..1 how locked the tempo is
+    long onsetCount() const { return mOnsetCount.load(std::memory_order_relaxed); }    // total detected onsets (rate = diff over time)
 
 private:
     void analyzeWindow();
@@ -98,7 +99,7 @@ private:
     float mTempoBpm = 120.f, mBeatPhase = 0.f;
     long mBeatNum = 0;
     std::atomic<float> mBeatPhaseA{0.f}, mTempoConfA{0.f};
-    std::atomic<long> mBeatNumA{0};
+    std::atomic<long> mBeatNumA{0}, mOnsetCount{0};
 
     std::atomic<float> mLevel{0}, mBass{0}, mMid{0}, mTreble{0}, mBeat{0}, mBpm{0}, mRawLevel{0};
     std::atomic<float> mBands[MAX_BANDS]{};
