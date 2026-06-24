@@ -84,6 +84,11 @@ void AlsaCapture::runCapture() {
         snd_pcm_hw_params_set_rate_near(pcm, hw, &rate, nullptr);
         snd_pcm_uframes_t per = period;
         snd_pcm_hw_params_set_period_size_near(pcm, hw, &per, nullptr);
+        // Bound the ring buffer to ~3 periods so capture latency stays low (~34ms
+        // @44.1k) instead of ALSA's large default; keeps audio->LED lag tight. Too
+        // small risks xruns under CPU load, which the read loop already recovers.
+        snd_pcm_uframes_t bufsz = per * 3;
+        snd_pcm_hw_params_set_buffer_size_near(pcm, hw, &bufsz);
         if (snd_pcm_hw_params(pcm, hw) < 0) {
             snd_pcm_close(pcm);
             mOk.store(false);
