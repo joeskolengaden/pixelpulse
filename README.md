@@ -164,3 +164,7 @@ builds on install.
 
 Bundled `src/kissfft/` is Mark Borgerding's **kiss_fft** (BSD 3-clause).
 Plugin © joeskolengaden.
+
+## App / remote control
+
+See [docs/ANDROID_INTEGRATION.md](docs/ANDROID_INTEGRATION.md) for how to build an Android (or any) app that controls this plugin — and any FPP plugin — over FPP's HTTP API, including the consolidated `app.php` endpoint.
